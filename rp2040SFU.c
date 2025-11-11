@@ -1,0 +1,46 @@
+#include <stdio.h>
+#include <string.h>
+#include "pico/stdlib.h"
+
+#include "usart_mini.h"
+#include "packet_receiver.h"
+#include "sfu_commands.h"
+#include "crc32.h"
+
+int main() {
+    stdio_init_all();
+    usart_init();
+    crc32_init_table();
+    //sleep_ms(5000);
+
+	recive_packets_init();
+	sfu_command_init();
+
+    // printf("CRC begin\n");
+    // volatile uint32_t t1 = time_us_32();
+    // uint32_t crc = crc32_calc((const void *)0x10010000, 2000000);
+    // volatile uint32_t t2 = time_us_32();
+    // printf("CRC=0x%08X\t%i\n", crc, t2-t1);
+
+	while (1)
+	{
+		stat_error_timeout = 0;
+		while ((stat_error_timeout * PACKET_TIMEOUT_mS) < 2000)
+		{
+			recive_packets_worker();
+			recive_packets_print_stat();
+		}
+		main_start();
+	}
+
+    while (true) {
+        uint8_t rx = 0;
+        while (recive_byte(&rx)) {
+            printf("%02X ", rx);
+        }
+
+        printf("%i\t%i\t%i\t\t%i\n", rx_errors, rx_overfulls, rx_count_max, rx_total);
+        send_str("Hello, UART!\n");
+        sleep_ms(1000);
+    }
+}

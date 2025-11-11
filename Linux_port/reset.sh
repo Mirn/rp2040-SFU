@@ -1,0 +1,1 @@
+/home/osboxes/shared/SFU_RP2040/cp2102n-gpioctrl pulse 1 100

@@ -1,0 +1,1 @@
+wine ./FastTest.exe -fast -exit -run -DEV:COM33 /home/osboxes/shared/SFU_RP2040/payspot-tester.bin
