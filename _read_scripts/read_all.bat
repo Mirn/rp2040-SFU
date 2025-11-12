@@ -1,0 +1,1 @@
+openocd -f interface/cmsis-dap.cfg -c "adapter speed 5000" -f target/rp2040.cfg -c "init; reset halt; dump_image full_flash.bin 0x10000000 0x200000; exit"
