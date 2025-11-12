@@ -32,8 +32,14 @@ uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040 boot";
 #define BOOTLOADER_TO      (FLASH_BASE + BOOTLOADER_SIZE)
 #define MAIN_START_FROM    (BOOTLOADER_TO)
 #define MAIN_RUN_FROM      (BOOTLOADER_TO + 0x100)
+#define MAIN_END           (MAIN_START_FROM + FLASH_SIZE_CORRECT*1024)
 
-#define FLASH_SIZE_CORRECT   ((FLASH_SIZE*1024 - BOOTLOADER_SIZE) / 1024)
+#define MAIN_CRC_OFFSET           (0)
+#define MAIN_TIME_STAMP_OFFSET    (1)
+#define MAIN_CRC           ((uint32_t *)(MAIN_END + sizeof(uint32_t) * MAIN_CRC_OFFSET))
+#define MAIN_TIME_STAMP    ((uint32_t *)(MAIN_END + sizeof(uint32_t) * MAIN_TIME_STAMP_OFFSET))
+
+#define FLASH_SIZE_CORRECT   (((FLASH_SIZE*1024 - BOOTLOADER_SIZE) / 1024) - (FLASH_SECTOR_SIZE/ 1024))
 #define FLASH_SIZE_CORRECT_L (FLASH_SIZE_CORRECT & 0xFF)
 #define FLASH_SIZE_CORRECT_H (FLASH_SIZE_CORRECT >> 8)
 #else
@@ -406,7 +412,12 @@ void main_start()
 	if (((boot_from[1] >> 24) != (FLASH_BASE >> 24)) && (boot_from[1] > MAIN_RUN_FROM))
 		return send_str("FLASH ERROR\r");
 
+    if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) != (*MAIN_CRC)) {
+        return send_str("CRC32 ERROR\r");
+    }
+
 	send_str("CONTEXT OK\r\r");
+    sleep_us(1500);
 
 #ifdef USE_STDPERIPH_DRIVER
 	usart_deinit();
@@ -425,6 +436,7 @@ void main_start()
 #ifdef USING_PICO_SDK
     usart_deinit();
     rp2040_quiesce_and_jump((uint32_t)boot_from);
+    return;
 #endif
 
 	jump_main(boot_from[0], boot_from[1]);
@@ -455,6 +467,25 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 
 		send('\r');
 		send_str("CRC OK\r");
+        //sleep_ms(100);
+        uint32_t new_crc_sign = crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM);
+        uint32_t new_time_stamp = (*MAIN_TIME_STAMP) + 1;
+        if (((*MAIN_CRC) != UINT32_MAX) || ((*MAIN_TIME_STAMP) != UINT32_MAX)) {
+            printf("erase sign block\r");
+            uint32_t ints = save_and_disable_interrupts();
+            flash_range_erase(MAIN_END - FLASH_BASE, FLASH_SECTOR_SIZE);
+            restore_interrupts(ints);
+            printf("erase sign block DONE\r");            
+        }
+
+        uint32_t write_buf[FLASH_PAGE_SIZE / sizeof(uint32_t)] = {[0 ... ((FLASH_PAGE_SIZE / sizeof(uint32_t))-1)] = UINT32_MAX};
+        write_buf[MAIN_CRC_OFFSET] = new_crc_sign;
+        write_buf[MAIN_TIME_STAMP_OFFSET] = new_time_stamp;
+        uint32_t ints = save_and_disable_interrupts();
+        flash_range_program(MAIN_END - FLASH_BASE, (const void*)write_buf, sizeof(write_buf));
+        restore_interrupts (ints);
+        printf("NEW CRC SIGN: 0x%08X\r", new_crc_sign);
+        printf("NEW TIME_VAL: 0x%08X\r", new_time_stamp);
         sleep_ms(100);
 
 		main_start();
