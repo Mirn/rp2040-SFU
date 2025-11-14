@@ -98,4 +98,15 @@ target_include_directories(rp2040SFU PRIVATE
 
 pico_add_extra_outputs(rp2040SFU)
 
+set(RP2040_FLASH_BASE 0x10000000)
+set(RP2040_BOOT_END  0x10010000)  # 0x10000000 + 64KiB
 
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+  COMMAND ${CMAKE_OBJCOPY}
+          -O binary
+          --pad-to ${RP2040_BOOT_END}
+          --gap-fill 0xFF
+          $<TARGET_FILE:${PROJECT_NAME}>
+          ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}_padded_64k.bin
+  COMMENT "Make padded 64KiB (0xFF) .bin for boot region"
+)
