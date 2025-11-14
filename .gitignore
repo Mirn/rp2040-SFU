@@ -45,3 +45,4 @@
 .tmp_versions/
 build
 !.vscode/*
+_read_scripts/
