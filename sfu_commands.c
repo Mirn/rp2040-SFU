@@ -34,6 +34,12 @@ uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040 boot";
 #define MAIN_RUN_FROM      (BOOTLOADER_TO + 0x100)
 #define MAIN_END           (MAIN_START_FROM + FLASH_SIZE_CORRECT*1024)
 
+#define NV_PARAM_BLOCK_OFFSET (BOOTLOADER_TO - FLASH_SECTOR_SIZE)
+#define NV_PARAM_BLOCK      ((uint8_t *)NV_PARAM_BLOCK_OFFSET)
+#define NV_PARAM_BLOCK_SIZE FLASH_PAGE_SIZE
+#define FIRST_START_OFFSET  0
+#define FIRST_START         NV_PARAM_BLOCK[FIRST_START_OFFSET]
+
 #define MAIN_CRC_OFFSET           (0)
 #define MAIN_TIME_STAMP_OFFSET    (1)
 #define MAIN_CRC           ((uint32_t *)(MAIN_END + sizeof(uint32_t) * MAIN_CRC_OFFSET))
@@ -401,8 +407,46 @@ void jump_main(uint32_t stack, uint32_t func)
 
 #include "rp2040_quiesce_and_jump.h"
 
+bool check_first_start_once(){
+    if (FIRST_START != UINT8_MAX) {
+        return false;
+    } 
+    uint8_t write_buf[NV_PARAM_BLOCK_SIZE];
+    memcpy(write_buf, NV_PARAM_BLOCK, sizeof(write_buf));
+    write_buf[FIRST_START_OFFSET] = 0x00;
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_program(NV_PARAM_BLOCK_OFFSET - FLASH_BASE, (const void*)write_buf, sizeof(write_buf));
+    restore_interrupts (ints);
+    send_str("check_first_start_once unsetted\r");
+    return true;
+}
+
+void add_sign_crc() {
+    uint32_t new_crc_sign = crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM);
+    uint32_t new_time_stamp = (*MAIN_TIME_STAMP) + 1;
+    if (((*MAIN_CRC) != UINT32_MAX) || ((*MAIN_TIME_STAMP) != UINT32_MAX)) {
+        send_str("erase sign block\r");
+        uint32_t ints = save_and_disable_interrupts();
+        flash_range_erase(MAIN_END - FLASH_BASE, FLASH_SECTOR_SIZE);
+        restore_interrupts(ints);
+        send_str("erase sign block DONE\r");            
+    }
+
+    uint32_t write_buf[FLASH_PAGE_SIZE / sizeof(uint32_t)] = {[0 ... ((FLASH_PAGE_SIZE / sizeof(uint32_t))-1)] = UINT32_MAX};
+    write_buf[MAIN_CRC_OFFSET] = new_crc_sign;
+    write_buf[MAIN_TIME_STAMP_OFFSET] = new_time_stamp;
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_program(MAIN_END - FLASH_BASE, (const void*)write_buf, sizeof(write_buf));
+    restore_interrupts (ints);
+    //printf("NEW CRC SIGN: 0x%08X\r", new_crc_sign);
+    //printf("NEW TIME_VAL: 0x%08X\r", new_time_stamp);
+    send_str("NEW CRC SIGNED\r");
+    sleep_ms(2);
+}
+
 void main_start()
 {
+    bool first_start = check_first_start_once();
 	uint32_t *boot_from = (uint32_t*)MAIN_RUN_FROM;
 
 	if (((boot_from[0] >> 24) != (SRAM_BASE >> 24)) &&
@@ -412,6 +456,10 @@ void main_start()
 	if (((boot_from[1] >> 24) != (FLASH_BASE >> 24)) && (boot_from[1] > MAIN_RUN_FROM))
 		return send_str("FLASH ERROR\r");
 
+    if (first_start) {
+        add_sign_crc();
+    } 
+    
     if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) != (*MAIN_CRC)) {
         return send_str("CRC32 ERROR\r");
     }
@@ -467,27 +515,8 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 
 		send('\r');
 		send_str("CRC OK\r");
-        //sleep_ms(100);
-        uint32_t new_crc_sign = crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM);
-        uint32_t new_time_stamp = (*MAIN_TIME_STAMP) + 1;
-        if (((*MAIN_CRC) != UINT32_MAX) || ((*MAIN_TIME_STAMP) != UINT32_MAX)) {
-            printf("erase sign block\r");
-            uint32_t ints = save_and_disable_interrupts();
-            flash_range_erase(MAIN_END - FLASH_BASE, FLASH_SECTOR_SIZE);
-            restore_interrupts(ints);
-            printf("erase sign block DONE\r");            
-        }
 
-        uint32_t write_buf[FLASH_PAGE_SIZE / sizeof(uint32_t)] = {[0 ... ((FLASH_PAGE_SIZE / sizeof(uint32_t))-1)] = UINT32_MAX};
-        write_buf[MAIN_CRC_OFFSET] = new_crc_sign;
-        write_buf[MAIN_TIME_STAMP_OFFSET] = new_time_stamp;
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_program(MAIN_END - FLASH_BASE, (const void*)write_buf, sizeof(write_buf));
-        restore_interrupts (ints);
-        printf("NEW CRC SIGN: 0x%08X\r", new_crc_sign);
-        printf("NEW TIME_VAL: 0x%08X\r", new_time_stamp);
-        sleep_ms(100);
-
+        add_sign_crc();
 		main_start();
 	}
 	else
