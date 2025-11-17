@@ -46,3 +46,6 @@
 build
 !.vscode/*
 _read_scripts/
+sfu_diff8bit_linker/test.bin2040diff
+/sfu_diff8bit_linker/target
+sfu_diff8bit_linker/Cargo.lock
