@@ -38,10 +38,13 @@ fn main() -> io::Result<()> {
     let mut data:Vec<u8> = vec![];
     let mut change:Vec<u8> = vec![];
     let mut non_primary = 0;
+    let mut stop = false;
+    let mut pos = 0;
 
-    for i in 0..bin_a.len() {
-        let a = bin_a[i];
-        let b = bin_b[i];
+    while !stop {        
+        let a = if pos < bin_a.len() {bin_a[pos]} else {0xFFu8};
+        let b = if pos < bin_b.len() {bin_b[pos]} else {0xFFu8};
+        pos += 1;
         let diff = b.wrapping_sub(a);
 
         data.push(a);
@@ -67,6 +70,7 @@ fn main() -> io::Result<()> {
                 data.clear();
                 change.clear();
                 non_primary = 0;
+                stop = (pos >= bin_a.len()) && (pos >= bin_b.len());
             }
         } else {
             let block_len = 1 + addr.len() + change.len() + data.len();
@@ -84,6 +88,7 @@ fn main() -> io::Result<()> {
                 data.clear();
                 change.clear();
                 non_primary = 0;
+                stop = (pos >= bin_a.len()) && (pos >= bin_b.len());
             }
         }
     }
