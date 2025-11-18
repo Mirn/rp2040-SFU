@@ -47,7 +47,7 @@ fn main() -> io::Result<()> {
         data.push(a);
         if diff != 0 {
             addr.push((data.len()-1) as u8);
-            change.push(diff);
+            change.push(b);
             if diff != primary {
                 non_primary += 1;
             }
@@ -56,7 +56,7 @@ fn main() -> io::Result<()> {
             let block_len = 1 + addr.len() + data.len();
             if block_len >= 255 {
                 let padding = 256 - block_len;
-                res_bin.push(addr.len() as u8);
+                res_bin.push((addr.len() + padding) as u8);
                 res_bin.extend(vec![0xFF; padding as usize].iter());
                 res_bin.extend(addr.iter());
                 res_bin.extend(data.iter());
@@ -72,7 +72,7 @@ fn main() -> io::Result<()> {
             let block_len = 1 + addr.len() + change.len() + data.len();
             if block_len >= 254 {
                 let padding = 256 - block_len;
-                res_bin.push((addr.len() as u8) ^ 0xFF); // ^ 0xFF - make negative full format marker
+                res_bin.push(((addr.len() + padding) as u8) | 0x80); // make negative full format marker
                 res_bin.extend(vec![0xFF; padding as usize].iter());
                 res_bin.extend(addr.iter());
                 res_bin.extend(change.iter());
