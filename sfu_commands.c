@@ -31,7 +31,7 @@ uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040 boot";
 #define BOOTLOADER_FROM    (FLASH_BASE)
 #define BOOTLOADER_TO      (FLASH_BASE + BOOTLOADER_SIZE)
 #define MAIN_START_FROM    (BOOTLOADER_TO)
-#define MAIN_RUN_FROM      (BOOTLOADER_TO + 0x100)
+#define MAIN_RUN_FROM      (MAIN_START_FROM + 0x100)
 #define MAIN_END           (MAIN_START_FROM + FLASH_SIZE_CORRECT*1024)
 
 #define NV_PARAM_BLOCK_OFFSET (BOOTLOADER_TO - FLASH_SECTOR_SIZE)
@@ -79,6 +79,29 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size);
 
 static uint32_t write_addr = 0;
+
+
+static bool check_run_context(uint32_t *boot_from) {
+    // printf("Context stack: %08X\r", boot_from[0]);
+    // printf("Context flash: %08X\r", boot_from[1]);
+	if (((boot_from[0] >> 24) != (CCMDATARAM_BASE >> 24)) && (
+            (boot_from[0] <= (SRAM_BASE)) ||
+            (boot_from[0] >  (SRAM_END))
+        )||((boot_from[0] & 0x00000003) != 0)) //stack must be aligned to 4
+    {
+        send_str("Bootloader: STACK CONTEXT ERROR\r");
+		return false;
+    }
+
+	if ((boot_from[1] <= MAIN_RUN_FROM) ||
+        (boot_from[1] >= MAIN_END) || 
+        ((boot_from[1] & 0x00000001) == 0))      //check if non thumb2 mode
+    {
+        send_str("Bootloader: FLASH CONTEXT ERROR\r");
+        return false;
+    }
+    return true;
+}
 
 void sfu_command_init()
 {
@@ -353,6 +376,16 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
 
 		if ((body_addr == write_addr) && (word_count > 0))
 		{
+            if ((write_addr <= MAIN_RUN_FROM) && 
+                ((write_addr + word_count*4) >= (MAIN_RUN_FROM + 2*4))) {
+                if (!check_run_context((uint32_t*)((uint32_t)word_data + (MAIN_RUN_FROM - MAIN_START_FROM) - (write_addr - MAIN_START_FROM))))
+                {
+                    send_str("ERROR: Starting context wrong!\r");
+                    packet_send(SFU_CMD_WRERROR, body, 0);
+                    return;
+                }                
+            }
+
 #ifdef USING_PICO_SDK
             uint8_t buf[256];
             for (uint32_t offs = 0; offs < (word_count*4); offs += sizeof(buf)) {
@@ -449,12 +482,10 @@ void main_start()
     bool first_start = check_first_start_once();
 	uint32_t *boot_from = (uint32_t*)MAIN_RUN_FROM;
 
-	if (((boot_from[0] >> 24) != (SRAM_BASE >> 24)) &&
-		((boot_from[0] >> 24) != (CCMDATARAM_BASE >> 24)))
-		return send_str("SRAM ERROR\r");
-
-	if (((boot_from[1] >> 24) != (FLASH_BASE >> 24)) && (boot_from[1] > MAIN_RUN_FROM))
-		return send_str("FLASH ERROR\r");
+    if (!check_run_context(boot_from)) {
+        send_str("CONTEXT ERROR\r");
+        return;
+    }
 
     if (first_start) {
         add_sign_crc();
