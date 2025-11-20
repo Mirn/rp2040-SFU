@@ -36,6 +36,7 @@ set(PICO_CMAKE_CMSIS_ENABLED 1)
 set(PICO_FLASH_SIZE_BYTES 4194304)         # 4Mb for W25Q32
 set(PICO_USE_NEWLIB_NANO 1)
 set(PICO_BOOT_STAGE2_FILE ${PICO_SDK_PATH}/src/rp2_common/boot_stage2/boot2_w25q080.S)
+add_compile_definitions(PICO_FLASH_SIZE_BYTES=0x400000)
 # set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE) // TODO: fix linker error: undefined reference to `__wrap_putchar'
 
 # Initialise the Raspberry Pi Pico SDK
