@@ -22,15 +22,22 @@ typedef struct {
 
 tDBGMCU _dbgmcu = {0x20402040};
 tDBGMCU * DBGMCU = &_dbgmcu;
-uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040 boot";
+uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040_2Page";
 
-#define FLASH_SIZE          (PICO_FLASH_SIZE_BYTES/1024)
+//#define FLASH_SIZE          (PICO_FLASH_SIZE_BYTES/1024)
+#define FLASH_SIZE          ((2 * 1024 * 1024)/1024)
+
+#define SELECTOR_A (false)
+#define SELECTOR_B (true)
+bool main_selector = false;
+bool main_update_started = false;
+uint32_t max_time_stamp = 0;
 
 #define FLASH_BASE          XIP_BASE
 #define BOOTLOADER_SIZE     0x10000
 #define BOOTLOADER_FROM    (FLASH_BASE)
 #define BOOTLOADER_TO      (FLASH_BASE + BOOTLOADER_SIZE)
-#define MAIN_START_FROM    (BOOTLOADER_TO)
+#define MAIN_START_FROM    (BOOTLOADER_TO + 0x00200000 * (main_selector & 0x01))
 #define MAIN_RUN_FROM      (MAIN_START_FROM + 0x100)
 #define MAIN_END           (MAIN_START_FROM + FLASH_SIZE_CORRECT*1024)
 
@@ -73,12 +80,96 @@ uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040 boot";
 #define SFU_CMD_WRERROR 0x55
 #define SFU_CMD_HWRESET 0x11
 
+void erase_sign_block();
 static void sfu_command_info(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size);
 
 static uint32_t write_addr = 0;
+
+bool find_latest_variant(bool *variant) {
+    bool old_selector = main_selector;
+    main_selector = SELECTOR_A;
+    uint32_t tstamp_a = *MAIN_TIME_STAMP;
+    uint32_t crc32_a  = *MAIN_CRC;
+    main_selector = SELECTOR_B;
+    uint32_t tstamp_b = *MAIN_TIME_STAMP;
+    uint32_t crc32_b  = *MAIN_CRC;
+
+    printf("find_latest_variant\r");
+    printf("tstamp_a\t%08X\r", tstamp_a);
+    printf("tstamp_b\t%08X\r", tstamp_b);
+    printf("crc32_a \t%08X\r", crc32_a);
+    printf("crc32_b \t%08X\r", crc32_b);
+    printf("\r");
+
+    max_time_stamp = 0;
+    bool tstamp_a_ok = (tstamp_a != UINT32_MAX);
+    bool tstamp_b_ok = (tstamp_b != UINT32_MAX);
+
+    if (tstamp_a_ok && tstamp_b_ok) {
+        if (tstamp_a >= tstamp_b) {
+            send_str("Check Variant A: ");
+            max_time_stamp = tstamp_a;
+            main_selector = SELECTOR_A;
+        } else {
+            send_str("Check Variant B: ");
+            max_time_stamp = tstamp_b;
+            main_selector = SELECTOR_B;
+        }
+        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+            send_str("GOOD, selected from two\r");
+            *variant = main_selector;
+            main_selector = old_selector;
+            return true;
+        }
+        main_selector = !main_selector;
+        send_str("Broken\r  ...Check another Variant: ");
+        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+            send_str("GOOD, selected from two\r");
+            *variant = main_selector;
+            main_selector = old_selector;
+            return true;
+        }
+        send_str("Broken also\r");
+        main_selector = old_selector;
+        return false;
+    }
+
+    if (tstamp_a_ok) {
+        max_time_stamp = tstamp_a;
+        main_selector = SELECTOR_A;
+        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+            send_str("Variant A selected as single\r");
+            *variant = main_selector;
+            main_selector = old_selector;
+            return true;
+        } else {
+            send_str("Variant A is single, but also broken\r");
+            main_selector = old_selector;
+            return false;
+        }
+    }
+
+    if (tstamp_b_ok) {
+        max_time_stamp = tstamp_b;
+        main_selector = SELECTOR_B;
+        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+            send_str("Variant B selected as single\r");
+            *variant = main_selector;
+            main_selector = old_selector;
+            return true;
+        } else {
+            send_str("Variant B is single, but also broken\r");
+            main_selector = old_selector;
+            return false;
+        }
+    }
+
+    main_selector = old_selector;
+    return false;    
+}
 
 
 static bool check_run_context(uint32_t *boot_from) {
@@ -164,6 +255,7 @@ static inline uint32_t deserialize_uint32(uint8_t *body)
 
 static void sfu_command_info(uint8_t code, UNUSED_A uint8_t *body, UNUSED_A uint32_t size)
 {
+    main_selector = !main_selector;
 	const uint32_t CPU_TYPE = DBGMCU->IDCODE & 0xFFFF0FFF; //7..4 bits reserved
 
 	for (uint32_t index = 0; index < 12; index++)
@@ -177,6 +269,7 @@ static void sfu_command_info(uint8_t code, UNUSED_A uint8_t *body, UNUSED_A uint
 	serialize_uint32(body + 28, MAIN_RUN_FROM);
 
 	packet_send(code, body, 32);
+    main_selector = !main_selector;
 }
 
 typedef struct {
@@ -184,9 +277,8 @@ typedef struct {
 	uint8_t total_size;
 } tFLASH_sectors;
 
-#define ADDR_COMPRESS 0x00004000
-
 #ifdef USE_STDPERIPH_DRIVER
+#define ADDR_COMPRESS 0x00004000
 const tFLASH_sectors sectors[] = {
 		{FLASH_Sector_2, (0x00004000 / ADDR_COMPRESS)},
 		{FLASH_Sector_3, (0x00008000 / ADDR_COMPRESS)},
@@ -202,6 +294,7 @@ const tFLASH_sectors sectors[] = {
 #endif
 
 #ifdef STM32F745xx
+#define ADDR_COMPRESS 0x00004000
 #define FLASH_COMPLETE HAL_OK
 const tFLASH_sectors sectors[] = {
 		{FLASH_SECTOR_1, (0x00008000 / ADDR_COMPRESS)},
@@ -222,6 +315,11 @@ static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size)
 
 	if (firmware_size > 0)
 	{
+        main_selector = !main_selector;
+        main_update_started = true;
+        
+        erase_sign_block();
+        rx_dma_check();
 #ifdef USING_PICO_SDK
         {
             uint32_t pos = 0;
@@ -454,14 +552,18 @@ bool check_first_start_once(){
     return true;
 }
 
+void erase_sign_block() {
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_erase(MAIN_END - FLASH_BASE, FLASH_SECTOR_SIZE);
+    restore_interrupts(ints);
+}
+
 void add_sign_crc() {
     uint32_t new_crc_sign = crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM);
-    uint32_t new_time_stamp = (*MAIN_TIME_STAMP) + 1;
+    uint32_t new_time_stamp = max_time_stamp + 1;
     if (((*MAIN_CRC) != UINT32_MAX) || ((*MAIN_TIME_STAMP) != UINT32_MAX)) {
         send_str("erase sign block\r");
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_erase(MAIN_END - FLASH_BASE, FLASH_SECTOR_SIZE);
-        restore_interrupts(ints);
+        erase_sign_block();
         send_str("erase sign block DONE\r");            
     }
 
@@ -491,9 +593,10 @@ void main_start()
         add_sign_crc();
     } 
     
-    if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) != (*MAIN_CRC)) {
-        return send_str("CRC32 ERROR\r");
-    }
+    //already checked in find_latest_variant
+    // if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) != (*MAIN_CRC)) {
+    //     return send_str("CRC32 ERROR\r");
+    // }
 
 	send_str("CONTEXT OK\r\r");
     sleep_us(1500);

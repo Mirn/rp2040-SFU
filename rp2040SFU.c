@@ -16,6 +16,10 @@ int main() {
 	recive_packets_init();
 	sfu_command_init();
 
+    bool variant = false;
+    bool main_valid = find_latest_variant(&variant);
+    main_selector = variant;
+
     // printf("CRC begin\n");
     // volatile uint32_t t1 = time_us_32();
     // uint32_t crc = crc32_calc((const void *)0x10010000, 2000000);
@@ -25,22 +29,31 @@ int main() {
 	while (1)
 	{
 		stat_error_timeout = 0;
-		while ((stat_error_timeout * PACKET_TIMEOUT_mS) < 2000)
+		while ((stat_error_timeout * PACKET_TIMEOUT_mS) < 500)
 		{
 			recive_packets_worker();
 			recive_packets_print_stat();
 		}
-		main_start();
-	}
 
-    while (true) {
-        uint8_t rx = 0;
-        while (recive_byte(&rx)) {
-            printf("%02X ", rx);
+        if (main_update_started) {
+            main_update_started = false;
+            main_valid = find_latest_variant(&variant);
+            main_selector = variant;
         }
 
-        printf("%i\t%i\t%i\t\t%i\n", rx_errors, rx_overfulls, rx_count_max, rx_total);
-        send_str("Hello, UART!\n");
-        sleep_ms(1000);
-    }
+        if (main_valid) {
+            main_start();
+        }		    
+	}
+
+    // while (true) {
+    //     uint8_t rx = 0;
+    //     while (recive_byte(&rx)) {
+    //         printf("%02X ", rx);
+    //     }
+
+    //     printf("%i\t%i\t%i\t\t%i\n", rx_errors, rx_overfulls, rx_count_max, rx_total);
+    //     send_str("Hello, UART!\n");
+    //     sleep_ms(1000);
+    // }
 }

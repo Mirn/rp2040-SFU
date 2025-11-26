@@ -1,7 +1,7 @@
 /*
  * sfu_commands.h
  *
- *  Created on: 08 июля 2016 г.
+ *  Created on: 08 пїЅпїЅпїЅпїЅ 2016 пїЅ.
  *      Author: Easy
  */
 
@@ -13,5 +13,9 @@ void sfu_command_parser(uint8_t code, uint8_t *body, uint32_t size);
 void sfu_command_timeout();
 
 void main_start();
+
+extern bool main_selector;
+extern bool main_update_started;
+bool find_latest_variant(bool *variant);
 
 #endif /* SFU_COMMANDS_H_ */
