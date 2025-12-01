@@ -20,9 +20,9 @@ typedef struct {
     uint32_t IDCODE;
 } tDBGMCU;
 
-tDBGMCU _dbgmcu = {0x20402040};
-tDBGMCU * DBGMCU = &_dbgmcu;
-uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040_2Page";
+const tDBGMCU _dbgmcu = {0x20402040};
+const tDBGMCU * DBGMCU = &_dbgmcu;
+const uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040_2Page";
 
 //#define FLASH_SIZE          (PICO_FLASH_SIZE_BYTES/1024)
 #define FLASH_SIZE          ((2 * 1024 * 1024)/1024)
@@ -32,6 +32,7 @@ uint8_t DEVICE_ID_BLOCK_PTR[12] = "RP2040_2Page";
 bool main_selector = false;
 bool main_update_started = false;
 uint32_t max_time_stamp = 0;
+uint32_t fw_fullbody_crc32 = UINT32_MAX;
 
 #define FLASH_BASE          XIP_BASE
 #define BOOTLOADER_SIZE     0x10000
@@ -315,7 +316,8 @@ static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size)
 
 	if (firmware_size > 0)
 	{
-        main_selector = !main_selector;
+        fw_fullbody_crc32 = UINT32_MAX;
+        main_selector = !main_selector;        
         main_update_started = true;
         
         erase_sign_block();
@@ -483,6 +485,7 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
                     return;
                 }                
             }
+            fw_fullbody_crc32 = crc32_calc_raw(fw_fullbody_crc32, word_data, word_count);
 
 #ifdef USING_PICO_SDK
             uint8_t buf[256];
@@ -630,11 +633,8 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 
 	uint32_t *from = (uint32_t*)MAIN_START_FROM;
 	uint32_t count = (write_addr - MAIN_START_FROM);
-#ifdef USING_PICO_SDK
-    uint32_t crc = crc32_calc(from, count);
-#else
-	uint32_t crc = crc_block(from, count / 4);
-#endif    
+    
+    uint32_t crc = fw_fullbody_crc32;
 	uint32_t need = deserialize_uint32(body);
 
 	serialize_uint32(body + 0, (uint32_t)from);
