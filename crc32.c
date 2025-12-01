@@ -77,8 +77,7 @@ static inline uint32_t crc32_stm_update_word_tbl(uint32_t crc, uint32_t w) {
     return crc;
 }
 
-static inline uint32_t crc32_stm32_words(const uint32_t *data, size_t word_count) {
-    uint32_t crc = 0xFFFFFFFFu;                 
+uint32_t crc32_calc_raw(uint32_t crc, const uint32_t *data, size_t word_count) {
     for (size_t i = 0; i < word_count; ++i) {
         crc = crc32_stm_update_word_tbl(crc, data[i]);
     }
@@ -86,6 +85,5 @@ static inline uint32_t crc32_stm32_words(const uint32_t *data, size_t word_count
 }
 
 uint32_t crc32_calc(const void *data, size_t len) {
-    return crc32_stm32_words(data, len/4);
-    // return _crc32_raw(0xFFFFFFFF, data, len);
+    return crc32_calc_raw(UINT32_MAX, data, len/4);
 }
