@@ -13,6 +13,7 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "crc32.h"
+#include "sfu_diff8bit_linker/decoder/bin2page_decoder.h"
 
 #define UNUSED_A __attribute__ ((unused))
 #define CCMDATARAM_BASE SRAM_BASE
@@ -88,6 +89,8 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size);
 
 static uint32_t write_addr = 0;
+static uint32_t write_addr_real = 0;
+static bool write_error = false;
 
 bool find_latest_variant(bool *variant) {
     bool old_selector = main_selector;
@@ -205,6 +208,7 @@ void sfu_command_timeout()
 {
 	if (write_addr == 0) return;
 	write_addr = 0;
+    write_addr_real = 0;
 	packet_send(SFU_CMD_TIMEOUT, (uint8_t*)&write_addr, sizeof(write_addr));
 }
 
@@ -320,6 +324,7 @@ static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size)
         main_selector = !main_selector;        
         main_update_started = true;
         
+        bin2page_reset();
         erase_sign_block();
         rx_dma_check();
 #ifdef USING_PICO_SDK
@@ -347,6 +352,8 @@ static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size)
 
         // for (int i = 0; i < 20; i++) {sleep_ms(200); packet_send(SFU_CMD_ERASE_PART, (uint8_t *)&i, sizeof(i)); rx_dma_check();}
         write_addr = MAIN_START_FROM;
+        write_addr_real = MAIN_START_FROM;
+        write_error = false;
         packet_send(code, body, size);
         return;
     }
@@ -457,6 +464,23 @@ HAL_StatusTypeDef flash_block_write(uint32_t wr_addr, uint32_t *data, uint32_t c
 }
 #endif
 
+void sfu_real_writer(uint8_t *block)
+{
+    if ((write_addr_real <= MAIN_RUN_FROM) && 
+        ((write_addr_real + FLASH_PAGE_SIZE) >= (MAIN_RUN_FROM + 2*4))) {
+        if (!check_run_context((uint32_t*)((uint32_t)block + (MAIN_RUN_FROM - MAIN_START_FROM) - (write_addr_real - MAIN_START_FROM))))
+        {
+            write_error = true;
+            return;
+        }
+    }
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_program(write_addr_real - FLASH_BASE, (const void*)block, FLASH_PAGE_SIZE);
+    restore_interrupts(ints);
+    rx_dma_check();
+    write_addr_real += FLASH_PAGE_SIZE;
+}
+
 static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
 {
 	if (size > 4)
@@ -476,19 +500,10 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
 
 		if ((body_addr == write_addr) && (word_count > 0))
 		{
-            if ((write_addr <= MAIN_RUN_FROM) && 
-                ((write_addr + word_count*4) >= (MAIN_RUN_FROM + 2*4))) {
-                if (!check_run_context((uint32_t*)((uint32_t)word_data + (MAIN_RUN_FROM - MAIN_START_FROM) - (write_addr - MAIN_START_FROM))))
-                {
-                    send_str("ERROR: Starting context wrong!\r");
-                    packet_send(SFU_CMD_WRERROR, body, 0);
-                    return;
-                }                
-            }
             fw_fullbody_crc32 = crc32_calc_raw(fw_fullbody_crc32, word_data, word_count);
 
 #ifdef USING_PICO_SDK
-            uint8_t buf[256];
+            uint8_t buf[FLASH_PAGE_SIZE];
             for (uint32_t offs = 0; offs < (word_count*4); offs += sizeof(buf)) {
                 memset(buf, 0xFF, sizeof(buf));
                 size_t cnt = sizeof(buf);
@@ -496,10 +511,14 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
                     cnt = (word_count*4) - offs;
                 };
                 memcpy(buf, (void*)((uint32_t)word_data + offs), cnt);
-                uint32_t ints = save_and_disable_interrupts();
-                flash_range_program(write_addr - FLASH_BASE + offs, (const void*)buf, sizeof(buf));
-                restore_interrupts (ints);
-                rx_dma_check();
+                
+                bin2page_decode(buf, main_selector, sfu_real_writer);
+
+                if (write_error) {
+                    send_str("ERROR: Starting context wrong!\r");
+                    packet_send(SFU_CMD_WRERROR, body, 0);
+                    return;
+                }                
             }
             // uint32_t ints = save_and_disable_interrupts();
             // flash_range_program(write_addr - FLASH_BASE, (const uint8_t *) word_data, word_count*4);
@@ -631,6 +650,8 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 {
 	if (size != 4) return;
 
+    int bin2page_errors = bin2page_finish(sfu_real_writer);
+
 	uint32_t *from = (uint32_t*)MAIN_START_FROM;
 	uint32_t count = (write_addr - MAIN_START_FROM);
     
@@ -643,16 +664,20 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 
 	packet_send(code, body, 12);
 
-	if (crc == need)
-	{
-		write_addr = 0;
+    if (bin2page_errors != 0) {
+        send_str("bin2page_errors!\r");
+    } else {
+        if (crc == need)
+        {
+            write_addr = 0;
 
-		send('\r');
-		send_str("CRC OK\r");
+            send('\r');
+            send_str("CRC OK\r");
 
-        add_sign_crc();
-		main_start();
-	}
-	else
-		send_str("CRC != NEED\r");
+            add_sign_crc();
+            main_start();
+        }
+        else
+            send_str("CRC != NEED\r");
+    }
 }

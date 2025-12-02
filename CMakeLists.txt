@@ -62,6 +62,7 @@ add_executable(rp2040SFU
     crc32.c
     packet_receiver.c
     sfu_commands.c
+    sfu_diff8bit_linker/decoder/bin2page_decoder.c
     )    
 
 pico_set_program_name(rp2040SFU "rp2040SFU")

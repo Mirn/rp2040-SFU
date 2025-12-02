@@ -47,4 +47,4 @@ build
 !.vscode/*
 _read_scripts/
 /bin2page_encoder/target
-sfu_diff8bit_linker/Cargo.lock
+bin2page_encoder/Cargo.lock
