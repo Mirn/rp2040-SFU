@@ -13,7 +13,8 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "crc32.h"
-#include "sfu_diff8bit_linker/decoder/bin2page_decoder.h"
+#include "rp2040_quiesce_and_jump.h"
+#include "bin2page_encoder/decoder/bin2page_decoder.h"
 
 #define UNUSED_A __attribute__ ((unused))
 #define CCMDATARAM_BASE SRAM_BASE
@@ -82,7 +83,11 @@ uint32_t fw_fullbody_crc32 = UINT32_MAX;
 #define SFU_CMD_WRERROR 0x55
 #define SFU_CMD_HWRESET 0x11
 
+bool check_first_start_once();
+bool check_run_context(uint32_t *boot_from);
 void erase_sign_block();
+void add_sign_crc();
+
 static void sfu_command_info(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size);
@@ -93,6 +98,20 @@ static uint32_t write_addr_real = 0;
 static bool write_error = false;
 
 bool find_latest_variant(bool *variant) {
+    printf("\rfind_latest_variant\r");
+
+    if (check_first_start_once()) {
+        main_selector = false;
+        *variant = main_selector;
+        if (!check_run_context((uint32_t*)MAIN_RUN_FROM)) {
+            send_str("Fisrt start, context erorr, no any variant\r");
+            return false;
+        } else {
+            add_sign_crc();
+            return true;
+        }
+    }
+    
     bool old_selector = main_selector;
     main_selector = SELECTOR_A;
     uint32_t tstamp_a = *MAIN_TIME_STAMP;
@@ -101,7 +120,6 @@ bool find_latest_variant(bool *variant) {
     uint32_t tstamp_b = *MAIN_TIME_STAMP;
     uint32_t crc32_b  = *MAIN_CRC;
 
-    printf("find_latest_variant\r");
     printf("tstamp_a\t%08X\r", tstamp_a);
     printf("tstamp_b\t%08X\r", tstamp_b);
     printf("crc32_a \t%08X\r", crc32_a);
@@ -170,13 +188,13 @@ bool find_latest_variant(bool *variant) {
             return false;
         }
     }
-
+    send_str("No any variant\r");
     main_selector = old_selector;
     return false;    
 }
 
 
-static bool check_run_context(uint32_t *boot_from) {
+bool check_run_context(uint32_t *boot_from) {
     // printf("Context stack: %08X\r", boot_from[0]);
     // printf("Context flash: %08X\r", boot_from[1]);
 	if (((boot_from[0] >> 24) != (CCMDATARAM_BASE >> 24)) && (
@@ -545,20 +563,14 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
 	packet_send(code, body, 8);
 }
 
+#ifndef USING_PICO_SDK
 __attribute__( ( naked ) )
 void jump_main(uint32_t stack, uint32_t func)
 {
-#ifdef USING_PICO_SDK
-    //unrechable
-    //printf("jump_main!\n");
-    //sleep_ms(10000);
-#else
 	__set_MSP(stack);
 	(*(void (*)())(func))();
-#endif
 }
-
-#include "rp2040_quiesce_and_jump.h"
+#endif
 
 bool check_first_start_once(){
     if (FIRST_START != UINT8_MAX) {
@@ -603,29 +615,24 @@ void add_sign_crc() {
 
 void main_start()
 {
-    bool first_start = check_first_start_once();
 	uint32_t *boot_from = (uint32_t*)MAIN_RUN_FROM;
-
     if (!check_run_context(boot_from)) {
         send_str("CONTEXT ERROR\r");
         return;
     }
 
-    if (first_start) {
-        add_sign_crc();
-    } 
-    
     //already checked in find_latest_variant
     // if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) != (*MAIN_CRC)) {
     //     return send_str("CRC32 ERROR\r");
     // }
 
 	send_str("CONTEXT OK\r\r");
-    sleep_us(1500);
+    sleep_us(1500); //time to send "context ok" message
 
 #ifdef USE_STDPERIPH_DRIVER
 	usart_deinit();
 	RCC_DeInit();
+	jump_main(boot_from[0], boot_from[1]);
 #endif
 
 #ifdef STM32F745xx
@@ -635,6 +642,7 @@ void main_start()
 	HAL_DeInit();
 	SysTick_Config(SysTick_LOAD_RELOAD_Msk);
 	SysTick->CTRL = 0x00000000;
+	jump_main(boot_from[0], boot_from[1]);
 #endif
 
 #ifdef USING_PICO_SDK
@@ -642,8 +650,6 @@ void main_start()
     rp2040_quiesce_and_jump((uint32_t)boot_from);
     return;
 #endif
-
-	jump_main(boot_from[0], boot_from[1]);
 }
 
 static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
