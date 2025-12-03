@@ -582,7 +582,7 @@ bool check_first_start_once(){
     uint32_t ints = save_and_disable_interrupts();
     flash_range_program(NV_PARAM_BLOCK_OFFSET - FLASH_BASE, (const void*)write_buf, sizeof(write_buf));
     restore_interrupts (ints);
-    send_str("check_first_start_once unsetted\r");
+    send_str("check_first_start_once unset\r");
     return true;
 }
 
