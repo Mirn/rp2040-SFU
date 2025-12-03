@@ -26,9 +26,9 @@ void usart_deinit();
 void send_str(const char *str);
 void send(const uint8_t tx_data);
 
-bool recive_byte(uint8_t *rx_data);
-uint32_t recive_count();
-uint32_t recive_size();
+bool receive_byte(uint8_t *rx_data);
+uint32_t receive_count();
+uint32_t receive_size();
 
 void send_block(const uint8_t *data, const uint32_t size);
 

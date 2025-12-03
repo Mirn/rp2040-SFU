@@ -38,12 +38,12 @@
 
 #define TIMEOUT_RESTART DWT_CYCCNT
 
-static bool recive_check_start();
-static bool recive_check_info();
-static bool recive_check_body();
-static bool recive_check_crc();
+static bool receive_check_start();
+static bool receive_check_info();
+static bool receive_check_body();
+static bool receive_check_crc();
 
-static bool (*recive_check)() = NULL;
+static bool (*receive_check)() = NULL;
 static uint32_t packet_start = 0;
 static uint32_t packet_timeout = 0;
 
@@ -69,10 +69,10 @@ static uint32_t stat_error_code = 0;
 static uint32_t stat_error_size = 0;
 static uint32_t stat_error_crc = 0;
 
-void recive_packets_init()
+void receive_packets_init()
 {
 	packet_timeout = TIMEOUT_RESTART;
-	recive_check = recive_check_start;
+	receive_check = receive_check_start;
 	packet_cnt = 0;
 #ifdef USE_STDPERIPH_DRIVER
 	RCC_AHB1PeriphClockCmd_inline(RCC_AHB1Periph_CRC, ENABLE);
@@ -88,19 +88,19 @@ static bool ERROR_RESET(const char *err_msg, uint32_t *stat_inc)
 	send_str("ERROR: ");
 	send_str(err_msg);
 	send('\r');
-	recive_packets_init();
+	receive_packets_init();
 	return false;
 }
 
-static bool recive_n_bytes(uint32_t cnt)
+static bool receive_n_bytes(uint32_t cnt)
 {
-	if (recive_count() < cnt)
+	if (receive_count() < cnt)
 		return false;
 
 	while (cnt--)
 	{
 		uint8_t rx = 0;
-		recive_byte(&rx);
+		receive_byte(&rx);
 
 		if (packet_cnt < sizeof(packet_buf))
 			packet_buf[packet_cnt++] = rx;
@@ -114,10 +114,10 @@ static bool recive_n_bytes(uint32_t cnt)
 
 ///////////////////////////////////////////////////////
 
-static bool recive_check_start()
+static bool receive_check_start()
 {
 	uint8_t rx = 0;
-	if (!recive_byte(&rx))
+	if (!receive_byte(&rx))
 		return false;
 
 	packet_start = (packet_start << 8) | ((uint32_t)rx);
@@ -126,7 +126,7 @@ static bool recive_check_start()
 		stat_error_start -= 3;
 
 		packet_cnt = 0;
-		recive_check = recive_check_info;
+		receive_check = receive_check_info;
 		return false;
 	}
 	else
@@ -134,9 +134,9 @@ static bool recive_check_start()
 	return false;
 }
 
-static bool recive_check_info()
+static bool receive_check_info()
 {
-	if (!recive_n_bytes(4))
+	if (!receive_n_bytes(4))
 		return false;
 
 	packet_code   = packet_buf[0] ^ 0x00;
@@ -153,22 +153,22 @@ static bool recive_check_info()
 
 	packet_body = &packet_buf[4];
 
-	recive_check = (packet_size > 0) ? recive_check_body : recive_check_crc;
+	receive_check = (packet_size > 0) ? receive_check_body : receive_check_crc;
 	return false;
 }
 
-static bool recive_check_body()
+static bool receive_check_body()
 {
-	if (!recive_n_bytes(packet_size))
+	if (!receive_n_bytes(packet_size))
 		return false;
 
-	recive_check = recive_check_crc;
+	receive_check = receive_check_crc;
 	return false;
 }
 
-static bool recive_check_crc()
+static bool receive_check_crc()
 {
-	if (!recive_n_bytes(4))
+	if (!receive_n_bytes(4))
 		return false;
 
 	packet_crc =
@@ -199,7 +199,7 @@ static bool recive_check_crc()
 
 	sfu_command_parser(packet_code, packet_body, packet_size);
 
-	recive_packets_init();
+	receive_packets_init();
 	return true;
 }
 
@@ -244,7 +244,7 @@ void packet_send(const uint8_t code, const uint8_t *body, const uint32_t size)
 
 ///////////////////////////////////////////////////////
 
-void recive_packets_print_stat()
+void receive_packets_print_stat()
 {
 	static uint32_t last_time = 0;
 	uint32_t now_time = DWT_CYCCNT;
@@ -273,18 +273,18 @@ void recive_packets_print_stat()
 
 ///////////////////////////////////////////////////////
 
-void recive_packets_worker()
+void receive_packets_worker()
 {
 	const uint32_t time_limit = (SystemCoreClock / 1000) * PACKET_TIMEOUT_mS;
 	if ((DWT_CYCCNT - packet_timeout) > time_limit)
 	{
 		stat_error_timeout++;
-		recive_packets_init();
+		receive_packets_init();
 		sfu_command_timeout();
 	}
 
-	while (recive_count() > 0)
-		if ((*recive_check)())
+	while (receive_count() > 0)
+		if ((*receive_check)())
 		{
 			packet_timeout = TIMEOUT_RESTART;
 			break;

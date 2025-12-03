@@ -162,18 +162,18 @@ void rx_dma_check() {
     }
 }
 
-uint32_t recive_count()
+uint32_t receive_count()
 {
     rx_dma_check();
 	return rx_pos_write - rx_pos_read;
 }
 
-bool recive_byte(uint8_t *rx_data)
+bool receive_byte(uint8_t *rx_data)
 {
     rx_dma_check();
 	if (rx_pos_read == rx_pos_write) return false;
 
-	uint32_t count = recive_count();
+	uint32_t count = receive_count();
 	if (rx_count_max < count)
 		rx_count_max = count;
 
@@ -189,7 +189,7 @@ bool recive_byte(uint8_t *rx_data)
 	return true;
 }
 
-uint32_t recive_size()
+uint32_t receive_size()
 {
 	return sizeof(rx_buffer);
 }

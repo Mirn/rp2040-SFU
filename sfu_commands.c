@@ -287,7 +287,7 @@ static void sfu_command_info(uint8_t code, UNUSED_A uint8_t *body, UNUSED_A uint
 	serialize_uint32(body + 12, CPU_TYPE);
 	serialize_uint16(body + 16, FLASH_SIZE_CORRECT);
 	serialize_uint16(body + 18, SFU_VER);
-	serialize_uint32(body + 20, recive_size());
+	serialize_uint32(body + 20, receive_size());
 	serialize_uint32(body + 24, MAIN_START_FROM);
 	serialize_uint32(body + 28, MAIN_RUN_FROM);
 
@@ -558,7 +558,7 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
 	}
 
 	serialize_uint32(body + 0, write_addr);
-	serialize_uint32(body + 4, recive_count());
+	serialize_uint32(body + 4, receive_count());
 
 	packet_send(code, body, 8);
 }
