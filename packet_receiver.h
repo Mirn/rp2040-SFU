@@ -8,9 +8,9 @@
 #ifndef PACKET_RECEIVER_H_
 #define PACKET_RECEIVER_H_
 
-void recive_packets_init();
-void recive_packets_worker();
-void recive_packets_print_stat();
+void receive_packets_init();
+void receive_packets_worker();
+void receive_packets_print_stat();
 
 void packet_send(const uint8_t code, const uint8_t *body, const uint32_t size);
 

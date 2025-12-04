@@ -13,7 +13,7 @@ int main() {
     crc32_init_table();
     //sleep_ms(5000);
 
-	recive_packets_init();
+	receive_packets_init();
 	sfu_command_init();
 
     bool variant = false;
@@ -31,8 +31,8 @@ int main() {
 		stat_error_timeout = 0;
 		while ((stat_error_timeout * PACKET_TIMEOUT_mS) < 500)
 		{
-			recive_packets_worker();
-			recive_packets_print_stat();
+			receive_packets_worker();
+			receive_packets_print_stat();
 		}
 
         if (main_update_started) {
@@ -48,7 +48,7 @@ int main() {
 
     // while (true) {
     //     uint8_t rx = 0;
-    //     while (recive_byte(&rx)) {
+    //     while (receive_byte(&rx)) {
     //         printf("%02X ", rx);
     //     }
 
