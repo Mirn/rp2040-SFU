@@ -41,5 +41,10 @@
         "random": "c",
         "rp2040_quiesce_and_jump.h": "c",
         "bin2page_decoder.h": "c"
+    },
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#173323",
+        "titleBar.activeBackground": "#204830",
+        "titleBar.activeForeground": "#F8FCFA"
     }
 }
