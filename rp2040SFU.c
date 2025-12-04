@@ -43,7 +43,7 @@ int main() {
 
         if (main_valid) {
             main_start();
-        }		    
+        }
 	}
 
     // while (true) {
