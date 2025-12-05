@@ -18,7 +18,7 @@
     "cmake.generator": "Ninja",
     "cmake.cmakePath": "${env:USERPROFILE}/.pico-sdk/cmake/v3.28.6/bin/cmake",
     "cmake.configureSettings": {
-        "CMAKE_MAKE_PROGRAM": "C:/Users/sj21d/.pico-sdk/ninja/v1.12.1/ninja.exe"
+        "CMAKE_MAKE_PROGRAM": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
     },
 
     "C_Cpp.debugShortcut": false,
