@@ -118,15 +118,32 @@ uint32_t crc32_IEEE8023(const void *data, size_t len) {
     return crc ^ 0xFFFFFFFF;
 }
 
+    // DEBUG Snippets
+    //
     // uint8_t b[8] = {1, 2, 3, 4, 5, 6, 7, 8};
     // printf("crc32_IEEE8023 test: %x %x %x\n", 
-    //     crc32_IEEE8023("12345678", 8), 
-    //     crc32_IEEE8023("TESTABCD", 8),
-    //     crc32_IEEE8023(b, 8)
-    // );
-    // printf("CRC begin\n");
+    //     crc32_IEEE8023_words_simple("12345678", 2), 
+    //     crc32_IEEE8023_words_simple("TESTABCD", 2),
+    //     crc32_IEEE8023_words_simple(b, 2)
+    // ); //must output "crc32_IEEE8023 test: 9ae0daaf 1fa79460 3fca88c5"
+
     // volatile uint32_t t1 = time_us_32();
     // uint32_t crc = crc32_calc((const void *)0x10010000, 2000000);
     // volatile uint32_t t2 = time_us_32();
-    // printf("CRC=0x%08X\t%i\n", crc, t2-t1);
+    // printf("CRC32=0x%08X\t%i\n\n", crc, t2-t1);
+
+    // t1 = time_us_32();
+    // crc = crc32_IEEE8023((const void *)0x10010000, 2000000);
+    // t2 = time_us_32();
+    // printf("crc32_IEEE8023 = 0x%08X\t%i\n", crc, t2-t1);
+
+    // t1 = time_us_32();
+    // crc = crc32_IEEE8023_words((const void *)0x10010000, 2000000 / 4);
+    // t2 = time_us_32();
+    // printf("IEEE8023_words = 0x%08X\t%i\n", crc, t2-t1);
+
+    // t1 = time_us_32();
+    // crc = crc32_IEEE8023_words_simple((const void *)0x10010000, 2000000 / 4);
+    // t2 = time_us_32();
+    // printf("words_simple  = 0x%08X\t%i\n", crc, t2-t1);
 
