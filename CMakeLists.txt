@@ -63,6 +63,7 @@ add_executable(rp2040SFU
     packet_receiver.c
     sfu_commands.c
     bin2page_encoder/decoder/bin2page_decoder.c
+    hardfault.c
     )    
 
 pico_set_program_name(rp2040SFU "rp2040SFU")
@@ -89,6 +90,7 @@ target_link_libraries(rp2040SFU
         pico_multicore
         hardware_dma
         hardware_flash
+        hardware_exception
         ) 
 
 # Add the standard include files to the build
