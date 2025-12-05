@@ -140,7 +140,7 @@ bool find_latest_variant(bool *variant) {
             max_time_stamp = tstamp_b;
             main_selector = SELECTOR_B;
         }
-        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+        if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
             send_str("GOOD, selected from two\r");
             *variant = main_selector;
             main_selector = old_selector;
@@ -148,7 +148,7 @@ bool find_latest_variant(bool *variant) {
         }
         main_selector = !main_selector;
         send_str("Broken\r  ...Check another Variant: ");
-        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+        if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
             send_str("GOOD, selected from two\r");
             *variant = main_selector;
             main_selector = old_selector;
@@ -162,7 +162,7 @@ bool find_latest_variant(bool *variant) {
     if (tstamp_a_ok) {
         max_time_stamp = tstamp_a;
         main_selector = SELECTOR_A;
-        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+        if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
             send_str("Variant A selected as single\r");
             *variant = main_selector;
             main_selector = old_selector;
@@ -177,7 +177,7 @@ bool find_latest_variant(bool *variant) {
     if (tstamp_b_ok) {
         max_time_stamp = tstamp_b;
         main_selector = SELECTOR_B;
-        if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
+        if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
             send_str("Variant B selected as single\r");
             *variant = main_selector;
             main_selector = old_selector;
@@ -593,7 +593,7 @@ void erase_sign_block() {
 }
 
 void add_sign_crc() {
-    uint32_t new_crc_sign = crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM);
+    uint32_t new_crc_sign = crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM);
     uint32_t new_time_stamp = max_time_stamp + 1;
     if (((*MAIN_CRC) != UINT32_MAX) || ((*MAIN_TIME_STAMP) != UINT32_MAX)) {
         send_str("erase sign block\r");
@@ -609,7 +609,7 @@ void add_sign_crc() {
     restore_interrupts (ints);
     //printf("NEW CRC SIGN: 0x%08X\r", new_crc_sign);
     //printf("NEW TIME_VAL: 0x%08X\r", new_time_stamp);
-    send_str("NEW CRC SIGNED\r");
+    send_str("NEW CRC32 IEEE802.3 SIGNED\r");
     sleep_ms(2);
 }
 

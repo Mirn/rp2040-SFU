@@ -11,6 +11,7 @@ int main() {
     stdio_init_all();
     usart_init();
     crc32_init_table();
+    crc32_IEEE8023_init();
     //sleep_ms(5000);
 
 	receive_packets_init();
@@ -19,12 +20,6 @@ int main() {
     bool variant = false;
     bool main_valid = find_latest_variant(&variant);
     main_selector = variant;
-
-    // printf("CRC begin\n");
-    // volatile uint32_t t1 = time_us_32();
-    // uint32_t crc = crc32_calc((const void *)0x10010000, 2000000);
-    // volatile uint32_t t2 = time_us_32();
-    // printf("CRC=0x%08X\t%i\n", crc, t2-t1);
 
 	while (1)
 	{

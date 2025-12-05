@@ -61,25 +61,25 @@ void crc32_init_table(void) {
     }
 }
 
-static inline uint32_t crc32_stm_update_word_tbl(uint32_t crc, uint32_t w) {
+static inline __attribute__((always_inline)) uint32_t crc32_update_word_tbl(uint32_t crc, uint32_t w, uint32_t *lut) {
     uint8_t b = (uint8_t)(w >> 24);
-    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
 
     b = (uint8_t)(w >> 16);
-    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
 
     b = (uint8_t)(w >> 8);
-    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
 
     b = (uint8_t)(w);
-    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
 
     return crc;
 }
 
 uint32_t crc32_calc_raw(uint32_t crc, const uint32_t *data, size_t word_count) {
     for (size_t i = 0; i < word_count; ++i) {
-        crc = crc32_stm_update_word_tbl(crc, data[i]);
+        crc = crc32_update_word_tbl(crc, data[i], crc32_stm_tab);
     }
     return crc;                                  
 }
@@ -87,3 +87,46 @@ uint32_t crc32_calc_raw(uint32_t crc, const uint32_t *data, size_t word_count) {
 uint32_t crc32_calc(const void *data, size_t len) {
     return crc32_calc_raw(UINT32_MAX, data, len/4);
 }
+
+static uint32_t crc32_IEEE8023_lut[256];
+
+void crc32_IEEE8023_init(void) {
+    uint32_t const poly = 0xEDB88320; //CRC-32-IEEE 802.3
+    for (uint32_t i = 0; i < 256; ++i) {
+        uint32_t c = i;
+        for (int j = 0; j < 8; j++) {
+            c = (c & 1) ? (poly ^ (c >> 1)) : (c >> 1);
+        }
+        crc32_IEEE8023_lut[i] = c;
+    }
+}
+
+// uint32_t crc32_IEEE8023_raw(uint32_t crc, const uint32_t *data, size_t word_count) {
+//     crc = ~crc;
+//     for (size_t i = 0; i < word_count; ++i) {
+//         crc = crc32_update_word_tbl(crc, data[i], crc32_IEEE8023_lut);
+//     }
+//     return ~crc;
+// }
+
+uint32_t crc32_IEEE8023(const void *data, size_t len) {
+    const uint8_t *buf = data;
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; i++) {
+        crc = crc32_IEEE8023_lut[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
+    }
+    return crc ^ 0xFFFFFFFF;
+}
+
+    // uint8_t b[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    // printf("crc32_IEEE8023 test: %x %x %x\n", 
+    //     crc32_IEEE8023("12345678", 8), 
+    //     crc32_IEEE8023("TESTABCD", 8),
+    //     crc32_IEEE8023(b, 8)
+    // );
+    // printf("CRC begin\n");
+    // volatile uint32_t t1 = time_us_32();
+    // uint32_t crc = crc32_calc((const void *)0x10010000, 2000000);
+    // volatile uint32_t t2 = time_us_32();
+    // printf("CRC=0x%08X\t%i\n", crc, t2-t1);
+
