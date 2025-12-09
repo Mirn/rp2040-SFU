@@ -1,6 +1,6 @@
 # RP2040-SFU — "Safe Firmware Update" system bootloader for dual-slot flash layouts (like OTA)
 
-**RP2040-SFU** is a compact and robust safe-update bootloader for the Raspberry Pi RP2040.  
+**RP2040-SFU** is a compact and robust safe-update bootloader for the Raspberry Pi PICO (RP2040 chip).
 It provides:
 
 - **A/B firmware slots** (dual-image fail-safe updates)
@@ -10,7 +10,7 @@ It provides:
 - **CRC32 validation** for data integrity
 - **Minimal footprint bootloader (~64 KB)**
 - **Host-side tools** (Rust encoder + C decoder test tool)
-- **No read command**, only erase all and update inside 
+- **No readback command: bootloader only supports full erase + write (no flash read/export).**
 - **MIT license**
 
 > ⚠️ **Important:** This design targets **4 MB external flash** (like W25Q32JVZP, **NOT W25Q16!!!**).  
@@ -24,7 +24,7 @@ https://github.com/Mirn/Boot_F4_fast_uart/tree/master
 
 (Linux Wine + CP2102n reset adaptation ) 
 https://github.com/Mirn/rp2040-SFU/tree/main/Linux_port
-TODO: fix this crap, rewrite to naitive Linux
+TODO: fix this crap, rewrite to native Linux
 
 
 ## Overview
@@ -53,7 +53,7 @@ The bootloader performs:
    - DMA ring buffer (32 KB)
    - Large secondary software buffer (128 KB)
    - Overflow/error statistics
-   - Protocol speed-optimized for modern USB-uart bridges like CP2102n FT232 and etc (data upstreaming without any pauses by USB reasons)
+   - Protocol speed-optimized for modern USB-UART bridges like CP2102n FT232 and etc (continuous upstream with no pauses caused by USB buffering)
 
 2. **Packet receiving layer**
    - Frames incoming UART bytes
@@ -61,7 +61,7 @@ The bootloader performs:
 
 3. **SFU Commands**
    - `CMD_BEGIN_UPDATE` (erase all)
-   - `CMD_WRITE_BLOCK` (BIN2Page block or RAW data of firmware, automaticly detect!)
+   - `CMD_WRITE_BLOCK` (BIN2Page block or RAW data of firmware, automatically detect!)
    - `CMD_FINISH_UPDATE`
 
 4. **Flash writing**
@@ -70,7 +70,7 @@ The bootloader performs:
 
 5. **Integrity checks**
    - CRC32 for each slot
-   - two different CRC32 polindrome, one for uart protocol, another one for slot content signing!
+   - two different CRC32 polynomials, one for UART protocol, another one for slot content signing!
    - Slot metadata update
 
 6. **Application launch**
@@ -159,7 +159,7 @@ arm-none-eabi-objcopy -O binary tester_b.elf tester_b.bin
 
 **Both binaries must have the same size.**
 
-### usage example inside cmakelist.txt:
+### Usage example inside cmakelist.txt:
 ````
 function(make_variant VAR_NAME LD_FILE)
     add_executable(${VAR_NAME}
@@ -179,7 +179,7 @@ add_custom_target(postprocess ALL
 )
 ````
 
-sytax:
+syntax:
 
 ````
 bin2page_encoder.exe inputfileA.bin inputfileB.bin outputfile.page2bin
@@ -189,7 +189,7 @@ This stream contains enough information for the bootloader to reconstruct both i
 
 The encoder does not know or encode flash offsets — it operates purely on file indices.
 
-### page2bin Format
+### Page2bin Format
 
 It begins with a header "BIN2Page" used for format detection. N bytes for extra info (now 0 bytes). 256-byte blocks follow.
 Each generated 256-byte block contains:
@@ -209,9 +209,9 @@ The UART subsystem (usart_mini) provides:
  - Real-time overflow/error statistics
  - Automatic draining to packet parser
  - The packet layer:
- - Performs SLIP-like framing
+ - Performs simple magic-word based framing (start signature + header + payload + CRC)
  - Delivers complete frames to sfu_command_parser()
- - Handles timeouts (PACKET_TIMEOUT_MS)
+ - Handles timeouts (PACKET_TIMEOUT_mS)
  - Provides consistent transport even over unstable USB-UART adapters
 
 ## Bootloading process finalization
@@ -244,4 +244,4 @@ If your board only has 2 MB (standard Pico):
  - Bootloader controls actual flash placement
  - UART transport can be replaced with other media
 
-# **The system will not work on 2 MB without modification.**
+# **This system will not work on 2 MB flash without modifying the memory layout and linker scripts.**
