@@ -1,4 +1,4 @@
-# RP2040-SFU — Safe Firmware Update System bootloader for Dual-Slot Flash Layouts (like OTA)
+# RP2040-SFU — "Safe Firmware Update" system bootloader for dual-slot flash layouts (like OTA)
 
 **RP2040-SFU** is a compact and robust safe-update bootloader for the Raspberry Pi RP2040.  
 It provides:
