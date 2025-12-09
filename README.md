@@ -42,6 +42,13 @@ Updating works by:
 There is **no position-independent code**:  
 each firmware image **must be linked to its correct slot base address**.
 
+**Why this exists**
+This project was created because existing RP2040 bootloaders are either USB-based, slow, fragile, or unsuitable for factory/field updates.
+rp2040-SFU is a UART-first, DMA-driven, production-oriented bootloader designed for high-speed, reliable firmware updates on custom RP2040 hardware with external flash.
+
+**Not a beginner-friendly project.**
+This bootloader is intended for engineers who understand RP2040 flash layout, linker scripts, and low-level firmware update flows.
+
 ## Architecture
 
 ### Bootloader Responsibilities
@@ -82,6 +89,25 @@ The bootloader performs:
      - Jump to the app's reset handler
 
 ---
+
+## Structure
+````
+Host PC
+  |
+  |  UART (921600 8n1, DMA RX)
+  v
+[Packet Layer] -> [Command Parser]
+                      |
+              +-------+-------+
+              |               |
+        Write Slot A     Write Slot B
+              |               |
+         CRC + Metadata  CRC + Metadata
+                      |
+               Variant Selector
+                      |
+                   Jump
+````
 
 ## A/B Slot Layout
 
@@ -243,5 +269,30 @@ If your board only has 2 MB (standard Pico):
  - Encoder is address-agnostic
  - Bootloader controls actual flash placement
  - UART transport can be replaced with other media
+
+# based on SFU bootloader for STM32
+<details>
+<summary><strong>Background: Why this SFU originally started on STM32F4</strong></summary>
+
+### Why built-in UART bootloaders were not enough
+
+Originally, this SFU was implemented for STM32F4 MCUs.
+At that time, the built-in UART bootloader had several practical limitations:
+
+- Assumed very conservative, RS-232-style UART speeds  
+- Poor fit for modern USB-UART bridges (CP2102, FTDI, etc.)
+- Extremely slow firmware upload for large images
+- No slot-based update, rollback, or metadata handling
+
+These limitations made the default bootloader unsuitable for
+production flashing and frequent firmware updates.
+
+A detailed analysis (in Russian) can be found in this Habr article:  
+https://habr.com/ru/articles/305800/
+
+English (Google Translate):  
+https://translate.google.com/translate?sl=ru&tl=en&u=https://habr.com/ru/articles/305800/
+
+</details>
 
 # **This system will not work on 2 MB flash without modifying the memory layout and linker scripts.**
