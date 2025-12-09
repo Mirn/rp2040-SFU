@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
+#include "crc32.h"
 
 // static uint32_t crc32_table[256];
 // static int crc32_table_ready = 0;
@@ -61,25 +63,25 @@ void crc32_init_table(void) {
     }
 }
 
-static inline __attribute__((always_inline)) uint32_t crc32_update_word_tbl(uint32_t crc, uint32_t w, uint32_t *lut) {
+static inline uint32_t crc32_stm_update_word_tbl(uint32_t crc, uint32_t w) {
     uint8_t b = (uint8_t)(w >> 24);
-    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
 
     b = (uint8_t)(w >> 16);
-    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
 
     b = (uint8_t)(w >> 8);
-    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
 
     b = (uint8_t)(w);
-    crc = (crc << 8) ^ lut[((crc >> 24) ^ b) & 0xFFu];
+    crc = (crc << 8) ^ crc32_stm_tab[((crc >> 24) ^ b) & 0xFFu];
 
     return crc;
 }
 
 uint32_t crc32_calc_raw(uint32_t crc, const uint32_t *data, size_t word_count) {
     for (size_t i = 0; i < word_count; ++i) {
-        crc = crc32_update_word_tbl(crc, data[i], crc32_stm_tab);
+        crc = crc32_stm_update_word_tbl(crc, data[i]);
     }
     return crc;                                  
 }
@@ -88,6 +90,7 @@ uint32_t crc32_calc(const void *data, size_t len) {
     return crc32_calc_raw(UINT32_MAX, data, len/4);
 }
 
+//#define crc32_IEEE8023_lut crc32_stm_tab
 static uint32_t crc32_IEEE8023_lut[256];
 
 void crc32_IEEE8023_init(void) {
@@ -99,34 +102,33 @@ void crc32_IEEE8023_init(void) {
         }
         crc32_IEEE8023_lut[i] = c;
     }
+
+    if ((crc32_IEEE8023("12345678", 8) != 0x9ae0daaf) || 
+        (crc32_IEEE8023("TESTABCD", 8) != 0x1fa79460)) {
+        printf("crc32_IEEE8023 self-check error!\r\n");
+        while (1) {
+        };
+    };
 }
 
-// uint32_t crc32_IEEE8023_raw(uint32_t crc, const uint32_t *data, size_t word_count) {
-//     crc = ~crc;
-//     for (size_t i = 0; i < word_count; ++i) {
-//         crc = crc32_update_word_tbl(crc, data[i], crc32_IEEE8023_lut);
-//     }
-//     return ~crc;
-// }
+uint32_t crc32_IEEE8023_raw(uint32_t crc, const void *data, size_t len_words) {
+    const uint32_t *p = (const uint32_t *)data;
+    crc = ~crc;
+
+    while (len_words--) {
+        uint32_t w = *p++;
+        crc = crc32_IEEE8023_lut[(crc ^ ( w        & 0xFF)) & 0xFF] ^ (crc >> 8);
+        crc = crc32_IEEE8023_lut[(crc ^ ((w >>  8) & 0xFF)) & 0xFF] ^ (crc >> 8);
+        crc = crc32_IEEE8023_lut[(crc ^ ((w >> 16) & 0xFF)) & 0xFF] ^ (crc >> 8);
+        crc = crc32_IEEE8023_lut[(crc ^ ((w >> 24) & 0xFF)) & 0xFF] ^ (crc >> 8);
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
 
 uint32_t crc32_IEEE8023(const void *data, size_t len) {
-    const uint8_t *buf = data;
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc = crc32_IEEE8023_lut[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
-    }
-    return crc ^ 0xFFFFFFFF;
+    return crc32_IEEE8023_raw(0, data, len/4);
 }
-
-    // DEBUG Snippets
-    //
-    // uint8_t b[8] = {1, 2, 3, 4, 5, 6, 7, 8};
-    // printf("crc32_IEEE8023 test: %x %x %x\n", 
-    //     crc32_IEEE8023_words_simple("12345678", 2), 
-    //     crc32_IEEE8023_words_simple("TESTABCD", 2),
-    //     crc32_IEEE8023_words_simple(b, 2)
-    // ); //must output "crc32_IEEE8023 test: 9ae0daaf 1fa79460 3fca88c5"
-
+  
     // volatile uint32_t t1 = time_us_32();
     // uint32_t crc = crc32_calc((const void *)0x10010000, 2000000);
     // volatile uint32_t t2 = time_us_32();
@@ -146,4 +148,3 @@ uint32_t crc32_IEEE8023(const void *data, size_t len) {
     // crc = crc32_IEEE8023_words_simple((const void *)0x10010000, 2000000 / 4);
     // t2 = time_us_32();
     // printf("words_simple  = 0x%08X\t%i\n", crc, t2-t1);
-

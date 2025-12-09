@@ -6,4 +6,5 @@ uint32_t crc32_calc(const void *data, size_t len);
 
 //for CRC-32-IEEE 802.3 support
 void crc32_IEEE8023_init(void);
+uint32_t crc32_IEEE8023_raw(uint32_t crc, const void *data, size_t len_words);
 uint32_t crc32_IEEE8023(const void *data, size_t len);
