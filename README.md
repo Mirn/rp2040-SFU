@@ -18,6 +18,15 @@ It provides:
 
 ---
 
+# Host uploading tool
+(windows)
+https://github.com/Mirn/Boot_F4_fast_uart/tree/master 
+
+(Linux Wine + CP2102n reset adaptation ) 
+https://github.com/Mirn/rp2040-SFU/tree/main/Linux_port
+TODO: fix this crap, rewrite to naitive Linux
+
+
 ## Overview
 
 RP2040-SFU implements a **fail-safe firmware update** mechanism based on *dual flash slots* (A/B).  
