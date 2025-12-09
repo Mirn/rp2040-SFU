@@ -227,4 +227,12 @@ If your board only has 2 MB (standard Pico):
  - Reduce slot sizes
  - Possibly remove dual-image logic
 
+# Integration Notes
+
+ - Firmware is not position-independent
+ - Each slot requires its own linked binary
+ - Encoder is address-agnostic
+ - Bootloader controls actual flash placement
+ - UART transport can be replaced with other media
+
 # **The system will not work on 2 MB without modification.**
