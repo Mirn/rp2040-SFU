@@ -98,13 +98,13 @@ static uint32_t write_addr_real = 0;
 static bool write_error = false;
 
 bool find_latest_variant(bool *variant) {
-    printf("\rfind_latest_variant\r");
+    printf("\nfind_latest_variant\n");
 
     if (check_first_start_once()) {
         main_selector = false;
         *variant = main_selector;
         if (!check_run_context((uint32_t*)MAIN_RUN_FROM)) {
-            send_str("Fisrt start, context erorr, no any variant\r");
+            send_str("Fisrt start, context erorr, no any variant\n");
             return false;
         } else {
             add_sign_crc();
@@ -120,11 +120,11 @@ bool find_latest_variant(bool *variant) {
     uint32_t tstamp_b = *MAIN_TIME_STAMP;
     uint32_t crc32_b  = *MAIN_CRC;
 
-    printf("tstamp_a\t%08X\r", tstamp_a);
-    printf("tstamp_b\t%08X\r", tstamp_b);
-    printf("crc32_a \t%08X\r", crc32_a);
-    printf("crc32_b \t%08X\r", crc32_b);
-    printf("\r");
+    printf("tstamp_a\t%08X\n", tstamp_a);
+    printf("tstamp_b\t%08X\n", tstamp_b);
+    printf("crc32_a \t%08X\n", crc32_a);
+    printf("crc32_b \t%08X\n", crc32_b);
+    printf("\n");
 
     max_time_stamp = 0;
     bool tstamp_a_ok = (tstamp_a != UINT32_MAX);
@@ -141,20 +141,20 @@ bool find_latest_variant(bool *variant) {
             main_selector = SELECTOR_B;
         }
         if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
-            send_str("GOOD, selected from two\r");
+            send_str("GOOD, selected from two\n");
             *variant = main_selector;
             main_selector = old_selector;
             return true;
         }
         main_selector = !main_selector;
-        send_str("Broken\r  ...Check another Variant: ");
+        send_str("Broken\n  ...Check another Variant: ");
         if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
-            send_str("GOOD, selected from two\r");
+            send_str("GOOD, selected from two\n");
             *variant = main_selector;
             main_selector = old_selector;
             return true;
         }
-        send_str("Broken also\r");
+        send_str("Broken also\n");
         main_selector = old_selector;
         return false;
     }
@@ -163,12 +163,12 @@ bool find_latest_variant(bool *variant) {
         max_time_stamp = tstamp_a;
         main_selector = SELECTOR_A;
         if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
-            send_str("Variant A selected as single\r");
+            send_str("Variant A selected as single\n");
             *variant = main_selector;
             main_selector = old_selector;
             return true;
         } else {
-            send_str("Variant A is single, but also broken\r");
+            send_str("Variant A is single, but also broken\n");
             main_selector = old_selector;
             return false;
         }
@@ -178,31 +178,31 @@ bool find_latest_variant(bool *variant) {
         max_time_stamp = tstamp_b;
         main_selector = SELECTOR_B;
         if (crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) == (*MAIN_CRC)) {
-            send_str("Variant B selected as single\r");
+            send_str("Variant B selected as single\n");
             *variant = main_selector;
             main_selector = old_selector;
             return true;
         } else {
-            send_str("Variant B is single, but also broken\r");
+            send_str("Variant B is single, but also broken\n");
             main_selector = old_selector;
             return false;
         }
     }
-    send_str("No any variant\r");
+    send_str("No any variant\n");
     main_selector = old_selector;
     return false;    
 }
 
 
 bool check_run_context(uint32_t *boot_from) {
-    // printf("Context stack: %08X\r", boot_from[0]);
-    // printf("Context flash: %08X\r", boot_from[1]);
+    // printf("Context stack: %08X\n", boot_from[0]);
+    // printf("Context flash: %08X\n", boot_from[1]);
 	if (((boot_from[0] >> 24) != (CCMDATARAM_BASE >> 24)) && (
             (boot_from[0] <= (SRAM_BASE)) ||
             (boot_from[0] >  (SRAM_END))
         )||((boot_from[0] & 0x00000003) != 0)) //stack must be aligned to 4
     {
-        send_str("Bootloader: STACK CONTEXT ERROR\r");
+        send_str("Bootloader: STACK CONTEXT ERROR\n");
 		return false;
     }
 
@@ -210,7 +210,7 @@ bool check_run_context(uint32_t *boot_from) {
         (boot_from[1] >= MAIN_END) || 
         ((boot_from[1] & 0x00000001) == 0))      //check if non thumb2 mode
     {
-        send_str("Bootloader: FLASH CONTEXT ERROR\r");
+        send_str("Bootloader: FLASH CONTEXT ERROR\n");
         return false;
     }
     return true;
@@ -514,7 +514,7 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
 		uint32_t *word_data = (uint32_t*)&(body[4]);
 		uint32_t word_count = (size - 4) / 4;
 
-		//printf("WR:\t%08X\t%08X\t%u\r", body_addr, write_addr, word_count);		//send_str("WR\r");
+		//printf("WR:\t%08X\t%08X\t%u\n", body_addr, write_addr, word_count);		//send_str("WR\n");
 
 		if ((body_addr == write_addr) && (word_count > 0))
 		{
@@ -533,7 +533,7 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
                 bin2page_decode(buf, main_selector, sfu_real_writer);
 
                 if (write_error) {
-                    send_str("ERROR: Starting context wrong!\r");
+                    send_str("ERROR: Starting context wrong!\n");
                     packet_send(SFU_CMD_WRERROR, body, 0);
                     return;
                 }                
@@ -582,7 +582,7 @@ bool check_first_start_once(){
     uint32_t ints = save_and_disable_interrupts();
     flash_range_program(NV_PARAM_BLOCK_OFFSET - FLASH_BASE, (const void*)write_buf, sizeof(write_buf));
     restore_interrupts (ints);
-    send_str("check_first_start_once unset\r");
+    send_str("check_first_start_once unset\n");
     return true;
 }
 
@@ -596,9 +596,9 @@ void add_sign_crc() {
     uint32_t new_crc_sign = crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM);
     uint32_t new_time_stamp = max_time_stamp + 1;
     if (((*MAIN_CRC) != UINT32_MAX) || ((*MAIN_TIME_STAMP) != UINT32_MAX)) {
-        send_str("erase sign block\r");
+        send_str("erase sign block\n");
         erase_sign_block();
-        send_str("erase sign block DONE\r");            
+        send_str("erase sign block DONE\n");            
     }
 
     uint32_t write_buf[FLASH_PAGE_SIZE / sizeof(uint32_t)] = {[0 ... ((FLASH_PAGE_SIZE / sizeof(uint32_t))-1)] = UINT32_MAX};
@@ -607,9 +607,9 @@ void add_sign_crc() {
     uint32_t ints = save_and_disable_interrupts();
     flash_range_program(MAIN_END - FLASH_BASE, (const void*)write_buf, sizeof(write_buf));
     restore_interrupts (ints);
-    //printf("NEW CRC SIGN: 0x%08X\r", new_crc_sign);
-    //printf("NEW TIME_VAL: 0x%08X\r", new_time_stamp);
-    send_str("NEW CRC32 IEEE802.3 SIGNED\r");
+    //printf("NEW CRC SIGN: 0x%08X\n", new_crc_sign);
+    //printf("NEW TIME_VAL: 0x%08X\n", new_time_stamp);
+    send_str("NEW CRC32 IEEE802.3 SIGNED\n");
     sleep_ms(2);
 }
 
@@ -617,16 +617,16 @@ void main_start()
 {
 	uint32_t *boot_from = (uint32_t*)MAIN_RUN_FROM;
     if (!check_run_context(boot_from)) {
-        send_str("CONTEXT ERROR\r");
+        send_str("CONTEXT ERROR\n");
         return;
     }
 
     //already checked in find_latest_variant
     // if (crc32_calc((const void *)MAIN_START_FROM, MAIN_END-MAIN_RUN_FROM) != (*MAIN_CRC)) {
-    //     return send_str("CRC32 ERROR\r");
+    //     return send_str("CRC32 ERROR\n");
     // }
 
-	send_str("CONTEXT OK\r\r");
+	send_str("CONTEXT OK\n\n");
     sleep_us(1500); //time to send "context ok" message
 
 #ifdef USE_STDPERIPH_DRIVER
@@ -671,19 +671,19 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 	packet_send(code, body, 12);
 
     if (bin2page_errors != 0) {
-        send_str("bin2page_errors!\r");
+        send_str("bin2page_errors!\n");
     } else {
         if (crc == need)
         {
             write_addr = 0;
 
-            send('\r');
-            send_str("CRC OK\r");
+            send('\n');
+            send_str("CRC OK\n");
 
             add_sign_crc();
             main_start();
         }
         else
-            send_str("CRC != NEED\r");
+            send_str("CRC != NEED\n");
     }
 }

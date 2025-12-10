@@ -87,7 +87,7 @@ static bool ERROR_RESET(const char *err_msg, uint32_t *stat_inc)
 	(*stat_inc)++;
 	send_str("ERROR: ");
 	send_str(err_msg);
-	send('\r');
+	send('\n');
 	receive_packets_init();
 	return false;
 }
@@ -253,7 +253,7 @@ void receive_packets_print_stat()
 		return;
 	last_time = now_time;
 
-	printf("%i\t%i\t%i\t" "\t" "%i\t%i\t" "\t" "%i\t%i\t%i\t%i\t%i\r",
+	printf("%i\t%i\t%i\t" "\t" "%i\t%i\t" "\t" "%i\t%i\t%i\t%i\t%i\n",
 			rx_overfulls,
 			rx_errors,
 			rx_count_max,
