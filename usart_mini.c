@@ -141,7 +141,7 @@ void rx_dma_check() {
     if (cnt > RX_DMA_SIZE) {
         rx_overfulls += (cnt - RX_DMA_SIZE);
         cnt = cnt & (RX_DMA_SIZE - 1);
-        send_str("OverDMA!\r");
+        send_str("OverDMA!\n");
     }
 
     uint32_t rsr = uart_get_hw(UART_ID)->rsr &0xFF; // only OE/BE/PE/FE errors
@@ -181,7 +181,7 @@ bool receive_byte(uint8_t *rx_data)
 	{
 		rx_pos_read = rx_pos_write + 1 - sizeof(rx_buffer);
 		rx_overfulls++;
-		send_str("Over!\r");
+		send_str("Over!\n");
 	}
 
 	*rx_data = rx_buffer[rx_pos_read % sizeof(rx_buffer)];
