@@ -13,7 +13,7 @@ It provides:
 - **No readback command: bootloader only supports full erase + write (no flash read/export).**
 - **MIT license**
 
-> ⚠️ **Important:** This design targets **4 MB external flash** (like W25Q32JVZP, **NOT W25Q16!!!**).  
+> ⚠️ **Important:** This design targets **4 MB external flash** (like W25Q32JVZP, **NOT W25Q16!!!**). 
 > Standard Raspberry Pi Pico boards with **2 MB flash will NOT work** without editing the flash layout and memory map.
 
 ---
@@ -29,17 +29,18 @@ TODO: fix this crap, rewrite to native Linux
 
 ## Overview
 
-RP2040-SFU implements a **fail-safe firmware update** mechanism based on *dual flash slots* (A/B).  
+RP2040-SFU implements a **fail-safe firmware update** mechanism based on *dual flash slots* (A/B). 
 The bootloader occupies a fixed 64 KB region (0x10000000–0x1000FFFF), and both application images reside above it.
 
 Updating works by:
 
-- Sending host-encoded differential blocks via UART
-- Bootloader reconstructs **both** slot images on-the-fly
+- Sending host-encoded differential blocks via UART (BIN2Page format encodes **two variants**)
+- Bootloader reconstructs **one** variant into the inactive slot from this stream;
+  the other physical slot remains as a fallback
 - CRC32 is calculated and only valid images are marked as usable
 - On next boot, the bootloader selects the most recent valid slot and jumps into it
 
-There is **no position-independent code**:  
+There is **no position-independent code**: 
 each firmware image **must be linked to its correct slot base address**.
 
 **Why this exists**
@@ -72,8 +73,10 @@ The bootloader performs:
    - `CMD_FINISH_UPDATE`
 
 4. **Flash writing**
-   - Reconstruct blockA (slot A) and blockB (slot B)
-   - Store them at `FLASH_BASE_A + offset` and `FLASH_BASE_B + offset`
+   - Decodes BIN2Page blocks into either the A-variant or the B-variant
+     (selected via the "shift" flag)
+   - Writes pages **only into the inactive slot**
+   - The other slot remains untouched and serves as fallback
 
 5. **Integrity checks**
    - CRC32 for each slot
@@ -98,15 +101,21 @@ Host PC
   v
 [Packet Layer] -> [Command Parser]
                       |
-              +-------+-------+
-              |               |
-        Write Slot A     Write Slot B
-              |               |
-         CRC + Metadata  CRC + Metadata
+           +----------------------+
+           |   inactive slot      |
+           | (A or B, selected    |
+           |   at CMD_BEGIN)      |
+           +----------+-----------+
+                      |
+                  Decode pages
+                      |
+           Write to inactive slot
+                      |
+                CRC + Metadata
                       |
                Variant Selector
                       |
-                   Jump
+                     Jump
 ````
 
 ## A/B Slot Layout
@@ -142,7 +151,9 @@ input_page_A.bin
 input_page_B.bin
 ````
 
-…which must have identical length, and produces a single compact stream:
+…which must have identical length, and produces a single compact stream.
+On the device side, this stream can be decoded into either of the two variants
+(depending on the target slot), while the other physical slot remains untouched.
 
 ````
 update.page2bin
@@ -211,9 +222,24 @@ syntax:
 bin2page_encoder.exe inputfileA.bin inputfileB.bin outputfile.page2bin
 ````
 
-This stream contains enough information for the bootloader to reconstruct both images block-by-block without storing them fully in RAM.
+This stream contains enough information to reconstruct **either** of the two images
+block-by-block (depending on a "shift" flag in the decoder) without storing them fully in RAM.
+
+In this RP2040 SFU implementation the bootloader only reconstructs **one** image per update:
+it always writes to the **inactive** slot, while the other slot remains untouched and serves as a fallback.
+The host decides which of the two variants ("A" or "B") should be written into the target slot.
 
 The encoder does not know or encode flash offsets — it operates purely on file indices.
+
+### Update semantics and failover
+
+- At boot, the SFU scans both slots (A and B), checks their CRC32 and timestamps,   and selects the **newest valid** image to run.
+- When `CMD_ERASE` is received, the bootloader **switches to the other slot** and erases only   that slot's region. The currently running slot is never the erase/write target.
+- During `CMD_WRITE`, the encoded BIN2Page stream is decoded into pages and written only into  the inactive slot. Another slot is left unchanged and remains a fallback.
+- On `CMD_START`, the bootloader verifies the full-body CRC of the new image, updates  CRC + timestamp metadata for that slot, and only then allows the jump into the new firmware.
+
+In other words: **one slot is updated, one slot is preserved**, and the bootloader always picks
+the newest valid one on the next boot.
 
 ### Page2bin Format
 
@@ -243,7 +269,8 @@ The UART subsystem (usart_mini) provides:
 ## Bootloading process finalization
 
 Once CMD_FINISH_UPDATE is received:
- - Bootloader computes CRC32 for both slots
+ - Bootloader computes CRC32 for the updated slot 
+ - Existing metadata of the untouched slot is preserved 
  - Marks valid slot(s)
  - On next reboot selects the newest valid variant
  - Clears hardware state
