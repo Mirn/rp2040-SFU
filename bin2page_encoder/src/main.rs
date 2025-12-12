@@ -163,6 +163,10 @@ fn main() -> io::Result<()> {
                 //non_primary = 0;
                 //stat_full += 1;
                 stop = (pos >= bin_a.len()) && (pos >= bin_b.len());
+                // NOTE about stop:
+                // We intentionally keep feeding 0xFF/0xFF after the end of both images
+                // until the last block is full enough to be flushed.
+                // On decode this only adds trailing 0xFF bytes, which are considered padding.
             }
         }
     }
