@@ -297,6 +297,171 @@ If your board only has 2 MB (standard Pico):
  - Bootloader controls actual flash placement
  - UART transport can be replaced with other media
 
+
+# Safety model
+
+This SFU is designed to be robust against corrupted transport, malformed update images, and partial or failed update sessions.  
+Below is an overview of the safety model and the main invariants the code enforces.
+
+### High-level guarantees
+
+- The bootloader **never writes outside the selected firmware slot**.
+- The currently active slot is **never erased or overwritten** during an update.
+- A new firmware image is considered **bootable only if**:
+  - Its flash region passes a full CRC32 check, and
+  - The vector table (SP + reset handler) passes strict sanity checks.
+- If an update fails at any stage, the system **falls back to the last valid image** (A/B scheme).
+- Malformed or noisy UART traffic can cause the update session to abort, but **cannot brick the device** (as long as there is at least one valid slot).
+
+---
+
+### Transport & packet layer
+
+**UART + DMA ring buffer**
+
+- Incoming bytes are stored in a DMA ring, then copied into a larger software ring buffer.
+- Buffer overflows are detected and counted (`rx_overfulls`); excess data is dropped instead of overwriting memory.
+
+**Packet framing**
+
+- Each packet starts with a 32-bit signature (`PACKET_SIGN_RX`), searched using a sliding 4-byte window.  
+  Any noise in the stream will eventually be resynchronized.
+- Header checks:
+  - `packet_code` and `packet_code_n` must be bitwise complements.
+  - `packet_size` must be ≤ `PACKET_MAX_SIZE` and aligned to 4 bytes.
+- Body/CRC reception:
+  - All payload bytes go into `packet_buf` until the expected size is reached.
+  - If `packet_buf` would overflow, the parser aborts the packet and resets its state.
+  - CRC32 is computed over the entire header+body (excluding the last 4-byte CRC field) and must match the CRC transmitted by the host.
+
+**Timeouts**
+
+- A global timeout detects “stalled” sessions: if no complete packet is received for `PACKET_TIMEOUT_mS`, the current packet is discarded and `sfu_command_timeout()` is called.
+- Timeouts **never** forward a partially received packet to the SFU layer.
+
+Result: corrupted or incomplete packets are dropped; at worst the update session fails and must be restarted.
+
+---
+
+### SFU command layer
+
+The SFU layer sits on top of the packet parser and implements the actual update protocol.
+
+**INFO**
+
+- `SFU_CMD_INFO` is read-only: it inspects both slots (A/B), reports IDs, flash layout, and current selection.  
+  It never modifies flash.
+
+**ERASE**
+
+- The host announces the firmware size as a 32-bit value.
+- If `firmware_size == 0` or `firmware_size > (MAIN_END - MAIN_START_FROM)`, SFU immediately returns `SFU_CMD_WRERROR` and does not touch flash.
+- On valid `firmware_size > 0`:
+  - `main_selector` is flipped to the **inactive** slot.
+  - The signature/metadata block of the target slot is erased.
+  - The main region of the slot is erased sector-by-sector until it fully covers the firmware range.
+  - The erased region is verified to contain only `0xFFFFFFFF`.
+  - Internal state is initialized:
+    - `write_addr` / `write_addr_real` set to slot base.
+    - `fw_fullbody_crc32` reset.
+    - `main_update_started = true`.
+    - BIN2Page decoder is reset.
+
+Only after a successful ERASE the slot becomes eligible for WRITE.
+
+**WRITE**
+
+- `SFU_CMD_WRITE` packets must:
+  - Have a 4-byte address prefix (`body_addr`).
+  - Provide data that starts exactly at `write_addr`. Any out-of-order or duplicate writes are ignored.
+- Data is fed into the BIN2Page decoder in fixed-size blocks (page-sized buffers padded with 0xFF).  
+  The decoder calls `sfu_real_writer()` for each fully decoded output block.
+
+**START**
+
+- `SFU_CMD_START` triggers:
+  - `bin2page_finish()` to flush any remaining buffered data.
+  - Final CRC32 check against the expected value supplied by the host.
+- Only if CRC matches and **no decoder/write errors** occurred:
+  - Slot metadata (CRC + timestamp) is written.
+  - On the next boot (or immediately after), the bootloader may select this slot as the “latest valid” firmware.
+
+If CRC or BIN2Page decoding fails, the slot is left **unsigned** and will not be selected as valid.
+
+---
+
+### Flash write constraints
+
+Flash writes are funneled through `sfu_real_writer()`:
+
+- Writes are allowed **only** if `main_update_started == true` (i.e. after a valid ERASE).
+- When the page being written overlaps the vector table (first words at `MAIN_RUN_FROM`), the function:
+  - Extracts the prospective initial SP and reset PC from the page.
+  - Validates them via `check_run_context()` (stack in valid RAM range, PC in code region, PC Thumb bit set, alignment, etc.).
+  - If validation fails, no flash write is performed and the update session is marked as failed.
+- The target address is always checked:
+  - `write_addr_real + FLASH_PAGE_SIZE` must not exceed `MAIN_END`.
+  - Writes must be aligned to the configured page size.
+
+Result: even with a malformed BIN2Page stream or buggy host encoder, flash writes cannot escape the slot boundaries or create a blatantly invalid vector table.
+
+---
+
+### BIN2Page decoder safety
+
+The BIN2Page decoder on the MCU side is defensive by design:
+
+- Input and output block sizes are fixed (`BIN2PAGE_INPUT_BSIZE == BIN2PAGE_OUTPUT_BSIZE == 256`).
+- All index arithmetic (padding, address table, data patches) is range-checked:
+  - If any index or derived offset would go outside the 256-byte block, the block is treated as invalid.
+- On structural errors:
+  - `decode_errors` is incremented.
+  - The decoder stops applying patches and instead emits the original 256-byte block unchanged.
+- `bin2page_finish()` flushes the remaining data and also reports whether any structural errors were seen.
+
+The SFU layer treats any non-zero `decode_errors` as a **hard failure** for the update.
+
+---
+
+### Slot selection & boot
+
+On startup, the bootloader:
+
+1. **Scans both slots (A and B)**:
+   - Reads their metadata (CRC, timestamp) and recomputes CRC32 over the full slot region.
+   - Only slots with matching CRC are considered valid.
+2. **Selects the latest valid slot**:
+   - If both are valid, the one with the newer timestamp wins.
+   - If only one is valid, that one is used.
+   - If neither is valid, the bootloader stays in SFU mode and waits for an update.
+3. **Performs a final context check** before jumping:
+   - Validates initial SP and reset PC again (same checks as in `sfu_real_writer`).
+   - If the context is invalid, the slot is treated as broken and not booted.
+
+Only after all these checks pass does the bootloader quiesce the system and jump to the application.
+
+---
+
+### Failure modes
+
+In practice, the following failure modes are possible and handled gracefully:
+
+- **Garbage or noisy UART input**  
+  → Packets fail header/size/CRC checks or time out; SFU stays in bootloader mode.
+
+- **Update interrupted mid-transfer**  
+  → Partially written slot fails CRC or BIN2Page checks; no valid metadata is written; the slot is not selected on boot.
+
+- **Encoder/format bugs (host side)**  
+  → BIN2Page decoder errors and/or CRC mismatch; update is rejected; existing valid slot remains bootable.
+
+- **Corrupted flash after manufacturing or field issues**  
+  → Slot fails CRC or context checks; bootloader falls back to the other slot or stays in SFU mode.
+
+In all cases, the SFU either:
+- boots a previously valid image, or  
+- stays in a safe “bootloader only” mode, waiting for a new update.
+
 # based on SFU bootloader for STM32
 <details>
 <summary><strong>Background: Why this SFU originally started on STM32F4</strong></summary>
