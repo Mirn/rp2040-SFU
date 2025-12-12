@@ -227,6 +227,8 @@ void sfu_command_timeout()
 	if (write_addr == 0) return;
 	write_addr = 0;
     write_addr_real = 0;
+    write_error = false;
+    main_update_started = false;
 	packet_send(SFU_CMD_TIMEOUT, (uint8_t*)&write_addr, sizeof(write_addr));
 }
 
@@ -669,6 +671,11 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 	serialize_uint32(body + 8, crc);
 
 	packet_send(code, body, 12);
+
+    write_addr = 0;
+    write_addr_real = 0;
+    write_error = false;
+    main_update_started = false;
 
     if (bin2page_errors != 0) {
         send_str("bin2page_errors!\n");
