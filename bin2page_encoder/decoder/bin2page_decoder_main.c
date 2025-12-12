@@ -32,6 +32,11 @@ int main(int argc, char *argv[]) {
     long file_size = ftell(file);
     fseek(file, 0, SEEK_SET); // Rewind to the beginning
 
+    if (file_size <= 0) {
+        fprintf(stderr, "Input file is empty or ftell() failed\n");
+        fclose(file);
+        return 1;
+    }
 
     size_t real_size = (file_size + 0xFFFF) & 0xFFFF0000;
     uint8_t *buffer = (uint8_t *)malloc(real_size);
