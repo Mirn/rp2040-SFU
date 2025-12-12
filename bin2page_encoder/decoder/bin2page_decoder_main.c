@@ -8,8 +8,8 @@
 FILE *outFile;
 
 void cb_test(uint8_t *block) {
-    if (fwrite(block, 1, BIN2PAGE_BLOCK_SIZE, outFile) != BIN2PAGE_BLOCK_SIZE) {
         perror("Error writing to file");
+    if (fwrite(block, 1, BIN2PAGE_OUTPUT_BSIZE, outFile) != BIN2PAGE_OUTPUT_BSIZE) {
         exit(-1);
     }
 }
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     bin2page_reset();
-    for (size_t i = 0; i < file_size; i+= BIN2PAGE_BLOCK_SIZE) {
+    for (size_t i = 0; i < file_size; i+= BIN2PAGE_INPUT_BSIZE) {
         bin2page_decode(buffer+i, false, cb_test);
     }
     int err_cntA = bin2page_finish(cb_test);
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     bin2page_reset();
-    for (size_t i = 0; i < file_size; i+= BIN2PAGE_BLOCK_SIZE) {
+    for (size_t i = 0; i < file_size; i+= BIN2PAGE_INPUT_BSIZE) {
         bin2page_decode(buffer+i, true, cb_test);
     }
     int err_cntB = bin2page_finish(cb_test);

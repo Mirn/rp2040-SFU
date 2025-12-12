@@ -16,7 +16,7 @@
 #define LOG_ERROR(format, ...) printf(format, ##__VA_ARGS__)
 //#define LOG_ERROR(format, ...) 
 
-static uint8_t result_buffer[BIN2PAGE_BLOCK_SIZE];
+static uint8_t result_buffer[BIN2PAGE_OUTPUT_BSIZE];
 static size_t  result_pos = 0;
 
 static inline void result_add(uint8_t byte, tBIN2page_cb cb) {
@@ -28,7 +28,7 @@ static inline void result_add(uint8_t byte, tBIN2page_cb cb) {
     }
 }
 
-static uint8_t decode_buffer[256];
+static uint8_t decode_buffer[BIN2PAGE_INPUT_BSIZE];
 static size_t  decode_pos = 0;
 static bool decode_inited = false;
 static bool decode_active = false;
@@ -49,7 +49,7 @@ void bin2page_reset() {
 }
 
 void bin2page_decode(uint8_t *bytes, bool shift, /* uint8_t primary,*/ tBIN2page_cb cb) {
-    size_t len = BIN2PAGE_BLOCK_SIZE;
+    size_t len = BIN2PAGE_INPUT_BSIZE;
     if (!decode_inited) {
         decode_inited = true;
         decode_active = (strncmp((const char *)bytes, BIN2PAGE_SIGN_STR, BIN2PAGE_SIGN_LEN) == 0);
@@ -69,33 +69,71 @@ void bin2page_decode(uint8_t *bytes, bool shift, /* uint8_t primary,*/ tBIN2page
             len -= 1;
             decode_buffer[decode_pos] = byte;
             decode_pos += 1;
-            if (decode_pos >= 256) {
+
+            if (decode_pos >= sizeof(decode_buffer)) {
                 decode_pos = 0;
 
                 bool full = (decode_buffer[0] >= 0x80);
                 uint8_t cnt = decode_buffer[0] & 0x7F;
-                uint8_t pos = 1;
-                while ((decode_buffer[pos] == 0xFF) && (cnt > 0)) {
+                size_t  pos = 1;
+
+                while ((cnt > 0) &&
+                       (pos < BIN2PAGE_INPUT_BSIZE) &&
+                       (decode_buffer[pos] == 0xFF)) {
                     pos += 1;
                     cnt -= 1;
                 }
+
+                if (pos >= BIN2PAGE_INPUT_BSIZE) {
+                    decode_errors += 1;
+                    LOG_ERROR("bin2page_decode: invalid header (pos overflow)\n");
+                    for (size_t idx = 0; idx < BIN2PAGE_INPUT_BSIZE; idx++) {
+                        result_add(decode_buffer[idx], cb);
+                    }
+                    output_offset += BIN2PAGE_INPUT_BSIZE;
+                    continue;
+                }
+
                 if (full) {
                     size_t diff = pos + cnt*1;
                     size_t offs = pos + cnt*2;
+
+                    if (pos + cnt > BIN2PAGE_INPUT_BSIZE ||
+                        diff + cnt > BIN2PAGE_INPUT_BSIZE ||
+                        offs > BIN2PAGE_INPUT_BSIZE) {
+                        decode_errors += 1;
+                        LOG_ERROR("bin2page_decode: invalid header (cnt/pos overflow), pos=%u cnt=%u\n",
+                                  (unsigned)pos, (unsigned)cnt);
+
+                        for (size_t idx = 0; idx < BIN2PAGE_INPUT_BSIZE; idx++) {
+                            result_add(decode_buffer[idx], cb);
+                        }
+                        output_offset += BIN2PAGE_INPUT_BSIZE;
+                        continue;
+                    }
+
                     if (shift) {
-                        size_t last_addr = offs-1;
-                        for (size_t i=0; i < cnt; i++) {
-                            size_t addr = offs + decode_buffer[pos + i];
-                            if ((addr >= 256) || (addr <= last_addr)) {
+                        size_t last_addr = (offs > 0) ? (offs - 1) : 0;
+                        for (size_t i = 0; i < cnt; i++) {
+                            size_t addr_index = pos + i;
+                            if (addr_index >= BIN2PAGE_INPUT_BSIZE) {
+                                decode_errors += 1;
+                                LOG_ERROR("bin2page_decode: addr_index overflow: %u\n",
+                                          (unsigned)addr_index);
+                                break;
+                            }
+
+                            size_t addr = offs + decode_buffer[addr_index];
+                            if ((addr >= BIN2PAGE_INPUT_BSIZE) || (addr <= last_addr)) {
                                 decode_errors += 1;
                                 LOG_ERROR("bin2page_decode: Shift addr error: %i, in_offs: %08X, out_offs: %08X\n", 
                                     addr, 
-                                    input_offset + i - BIN2PAGE_BLOCK_SIZE + BIN2PAGE_HEADER_LEN, 
+                                    input_offset + i - BIN2PAGE_INPUT_BSIZE + BIN2PAGE_HEADER_LEN, 
                                     output_offset + i);
                             } else {
                                 decode_buffer[addr] = decode_buffer[diff + i];
+                                last_addr = addr;
                             }
-                            last_addr = addr;
                         }
                     }
                     pos = offs;
@@ -111,16 +149,17 @@ void bin2page_decode(uint8_t *bytes, bool shift, /* uint8_t primary,*/ tBIN2page
                     pos = offs; */
                 }
                 // LOG_NORMAL("%i\t%i\t%i\t%08X\t%08X\n", full, cnt, pos, input_offset, output_offset);
-                for (size_t idx = pos; idx < BIN2PAGE_BLOCK_SIZE; idx++) {
+                for (size_t idx = pos; idx < BIN2PAGE_INPUT_BSIZE; idx++) {
                     result_add(decode_buffer[idx], cb);
                 }
-                output_offset += (BIN2PAGE_BLOCK_SIZE - pos);
+                output_offset += (BIN2PAGE_INPUT_BSIZE - pos);
             }
         }
     } else {
+        // bypass mode
         (*cb)(bytes);
     }
-    input_offset += BIN2PAGE_BLOCK_SIZE;
+    input_offset += BIN2PAGE_INPUT_BSIZE;
 }
 
 int bin2page_finish(tBIN2page_cb cb) {

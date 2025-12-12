@@ -1,6 +1,13 @@
 #include <stdint.h>
 
-#define BIN2PAGE_BLOCK_SIZE 256
+// NOTE:
+// BIN2PAGE_INPUT_BSIZE is limited by the on-wire format:
+// patch offsets are stored as uint8_t and address bytes inside a single block.
+// If you need larger blocks, the BIN2Page format itself must be redesigned.
+
+#define BIN2PAGE_OUTPUT_BSIZE 256
+#define BIN2PAGE_INPUT_BSIZE  256 //WARNING: MUST BE 8 bit!
+
 typedef void (*tBIN2page_cb)(uint8_t *block);
 
 void bin2page_reset();
