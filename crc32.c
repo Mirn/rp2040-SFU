@@ -61,6 +61,13 @@ void crc32_init_table(void) {
         }
         crc32_stm_tab[i] = c;
     }
+
+    if ((crc32_calc("12345678", 8) != 0xFEFC54F9) || 
+        (crc32_calc("TESTABCD", 8) != 0xB9CF5238)) {
+        while (1) {
+            printf("crc32_calc self-check error!\r\n");
+        };
+    };
 }
 
 static inline uint32_t crc32_stm_update_word_tbl(uint32_t crc, uint32_t w) {
@@ -105,8 +112,8 @@ void crc32_IEEE8023_init(void) {
 
     if ((crc32_IEEE8023("12345678", 8) != 0x9ae0daaf) || 
         (crc32_IEEE8023("TESTABCD", 8) != 0x1fa79460)) {
-        printf("crc32_IEEE8023 self-check error!\r\n");
         while (1) {
+            printf("crc32_IEEE8023 self-check error!\r\n");
         };
     };
 }
