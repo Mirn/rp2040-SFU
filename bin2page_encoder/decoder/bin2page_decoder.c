@@ -73,7 +73,7 @@ void bin2page_decode(uint8_t *bytes, bool shift, /* uint8_t primary,*/ tBIN2page
             if (decode_pos >= sizeof(decode_buffer)) {
                 decode_pos = 0;
 
-                bool full = (decode_buffer[0] >= 0x80);
+                bool full = (decode_buffer[0] >= 0x80); //small format not supported, MUST be only FULL format!!
                 uint8_t cnt = decode_buffer[0] & 0x7F;
                 size_t  pos = 1;
 
