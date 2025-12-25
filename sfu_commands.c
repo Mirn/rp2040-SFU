@@ -227,6 +227,8 @@ void sfu_command_timeout()
 	if (write_addr == 0) return;
 	write_addr = 0;
     write_addr_real = 0;
+    write_error = false;
+    main_update_started = false;
 	packet_send(SFU_CMD_TIMEOUT, (uint8_t*)&write_addr, sizeof(write_addr));
 }
 
@@ -335,6 +337,12 @@ static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size)
 	if (size != 4) return;
 
 	uint32_t firmware_size = deserialize_uint32(body);
+
+    if (firmware_size > (MAIN_END - MAIN_START_FROM)) {
+        send_str("ERROR: Erase size too big!\n");
+        packet_send(SFU_CMD_WRERROR, body, 0);
+        return;
+    }
 
 	if (firmware_size > 0)
 	{
@@ -484,14 +492,28 @@ HAL_StatusTypeDef flash_block_write(uint32_t wr_addr, uint32_t *data, uint32_t c
 
 void sfu_real_writer(uint8_t *block)
 {
+    if (main_update_started == false){
+        send_str("ERROR: write without erase not allowed!\n");
+        write_error = true;
+        return;
+    }
+
     if ((write_addr_real <= MAIN_RUN_FROM) && 
         ((write_addr_real + FLASH_PAGE_SIZE) >= (MAIN_RUN_FROM + 2*4))) {
         if (!check_run_context((uint32_t*)((uint32_t)block + (MAIN_RUN_FROM - MAIN_START_FROM) - (write_addr_real - MAIN_START_FROM))))
         {
+            send_str("ERROR: Starting context wrong!\n");
             write_error = true;
             return;
         }
     }
+
+    if ((write_addr_real + FLASH_PAGE_SIZE) > MAIN_END) {
+        send_str("ERROR: write out of slot range!\n");
+        write_error = true;
+        return;
+    }
+
     uint32_t ints = save_and_disable_interrupts();
     flash_range_program(write_addr_real - FLASH_BASE, (const void*)block, FLASH_PAGE_SIZE);
     restore_interrupts(ints);
@@ -533,7 +555,6 @@ static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size)
                 bin2page_decode(buf, main_selector, sfu_real_writer);
 
                 if (write_error) {
-                    send_str("ERROR: Starting context wrong!\n");
                     packet_send(SFU_CMD_WRERROR, body, 0);
                     return;
                 }                
@@ -670,13 +691,16 @@ static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)
 
 	packet_send(code, body, 12);
 
+    write_addr = 0;
+    write_addr_real = 0;
+    write_error = false;
+    main_update_started = false;
+
     if (bin2page_errors != 0) {
         send_str("bin2page_errors!\n");
     } else {
         if (crc == need)
         {
-            write_addr = 0;
-
             send('\n');
             send_str("CRC OK\n");
 

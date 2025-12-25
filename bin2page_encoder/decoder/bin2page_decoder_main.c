@@ -8,13 +8,14 @@
 FILE *outFile;
 
 void cb_test(uint8_t *block) {
-    if (fwrite(block, 1, BIN2PAGE_BLOCK_SIZE, outFile) != BIN2PAGE_BLOCK_SIZE) {
-        perror("Error writing to file");
-        exit(-1);
+    if (fwrite(block, 1, BIN2PAGE_OUTPUT_BSIZE, outFile) != BIN2PAGE_OUTPUT_BSIZE) {
+        fprintf(stderr, "Error writing to file\n");
+        exit(1); //TODO - FIX IT IF REMAKE ==========================================================================================
     }
 }
 
 int main(int argc, char *argv[]) {
+    int retval = 1;
     if (argc != 2) {
         printf("Usage: %s <file.bin>\n", argv[0]);
         return 1;
@@ -23,7 +24,7 @@ int main(int argc, char *argv[]) {
     const char *fname = argv[1];
     FILE *file = fopen(fname, "rb");
     if (file == NULL) {
-        printf("Error opening file: %s", fname);
+        fprintf(stderr, "Error opening file: %s\n", fname);
         return 1;
     }
 
@@ -31,13 +32,18 @@ int main(int argc, char *argv[]) {
     long file_size = ftell(file);
     fseek(file, 0, SEEK_SET); // Rewind to the beginning
 
+    if (file_size <= 0) {
+        fprintf(stderr, "Input file is empty or ftell() failed\n");
+        fclose(file);
+        return 1;
+    }
 
     size_t real_size = (file_size + 0xFFFF) & 0xFFFF0000;
     uint8_t *buffer = (uint8_t *)malloc(real_size);
 //    uint8_t *result = (char *)malloc(file_size);
 //    size_t  res_size = 0;
     if (buffer == NULL) {
-        perror("Error allocating memory");
+        fprintf(stderr, "Error allocating memory\n");
         fclose(file);
         return 1;
     }
@@ -45,7 +51,7 @@ int main(int argc, char *argv[]) {
 
     size_t bytes_read = fread(buffer, 1, file_size, file);
     if (bytes_read != file_size) {
-        perror("Error reading file");
+        fprintf(stderr, "Error reading file\n");
         free(buffer);
         fclose(file);
         return 1;
@@ -53,22 +59,26 @@ int main(int argc, char *argv[]) {
     fclose(file);
 
 
+    retval = 0;
     char outname[0x10000];
 
     strcpy(outname, fname);
     strcat(outname, ".bin_A");
     outFile = fopen(outname, "wb");
     if (outFile == NULL) {
-        printf("Failed to open output file: %s", outname);
+        fprintf(stderr, "Failed to open output file: %s\n", outname);
+        free(buffer);
         return 1;
     }
     bin2page_reset();
-    for (size_t i = 0; i < file_size; i+= BIN2PAGE_BLOCK_SIZE) {
+    for (size_t i = 0; i < file_size; i+= BIN2PAGE_INPUT_BSIZE) {
         bin2page_decode(buffer+i, false, cb_test);
     }
     int err_cntA = bin2page_finish(cb_test);
     if (err_cntA != 0) {
+        fprintf(stderr, "Finished with %i errors\n", err_cntA);
         printf("Finished with %i errors\n", err_cntA);
+        retval |= 2;
     }
     fclose(outFile);
 
@@ -76,19 +86,22 @@ int main(int argc, char *argv[]) {
     strcat(outname, ".bin_B");
     outFile = fopen(outname, "wb");
     if (outFile == NULL) {
-        printf("Failed to open output file: %s", outname);
+        fprintf(stderr, "Failed to open output file: %s\n", outname);
+        free(buffer);
         return 1;
     }
     bin2page_reset();
-    for (size_t i = 0; i < file_size; i+= BIN2PAGE_BLOCK_SIZE) {
+    for (size_t i = 0; i < file_size; i+= BIN2PAGE_INPUT_BSIZE) {
         bin2page_decode(buffer+i, true, cb_test);
     }
     int err_cntB = bin2page_finish(cb_test);
     if (err_cntB != 0) {
+        fprintf(stderr, "Finished with %i errors\n", err_cntB);
         printf("Finished with %i errors\n", err_cntB);
+        retval |= 4;
     }
     fclose(outFile);
 
     free(buffer);
-    return 0;
+    return retval;
 }

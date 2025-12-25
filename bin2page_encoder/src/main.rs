@@ -1,5 +1,4 @@
 use std::env;
-use std::path::PathBuf;
 use std::fs;
 use std::path::Path;
 use std::io;
@@ -163,6 +162,10 @@ fn main() -> io::Result<()> {
                 //non_primary = 0;
                 //stat_full += 1;
                 stop = (pos >= bin_a.len()) && (pos >= bin_b.len());
+                // NOTE about stop:
+                // We intentionally keep feeding 0xFF/0xFF after the end of both images
+                // until the last block is full enough to be flushed.
+                // On decode this only adds trailing 0xFF bytes, which are considered padding.
             }
         }
     }
@@ -178,13 +181,20 @@ fn main() -> io::Result<()> {
     let outname = &args[3].to_string();
     fs::write(outname, res_bin)?;
 
-    let current_exe: PathBuf = env::current_exe().expect("cannot get exe path");
-    let tool = format!("{}\\bin2page_decoder.exe", current_exe.parent().unwrap().to_str().unwrap());
+    let current_exe = env::current_exe().expect("cannot get exe path");
+    let mut tool_path = current_exe.parent().expect("no parent dir for current exe").to_path_buf();
+
+    #[cfg(windows)]
+    tool_path.push("bin2page_decoder.exe");
+
+    #[cfg(not(windows))]
+    tool_path.push("bin2page_decoder"); // ELF под Linux/macOS
+    let tool = tool_path.to_str().unwrap();
     println!("Run tool {tool}");
-    let out = Command::new(&tool)
+    let out = Command::new(tool)
         .arg(&outname)
         .output()
-        .expect("failed to execute C tool");
+        .expect("failed to execute C tool"); //TODO: add stderr & exitcode checking
     println!("stdout:\n{}", String::from_utf8_lossy(&out.stdout));
 
     let fn_dec_a = format!("{outname}.bin_A");

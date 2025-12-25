@@ -77,19 +77,27 @@ void receive_packets_init()
 #ifdef USE_STDPERIPH_DRIVER
 	RCC_AHB1PeriphClockCmd_inline(RCC_AHB1Periph_CRC, ENABLE);
 #endif
-#ifdef USING_PICO_SDK
-    crc32_init_table();
-#endif
 }
 
 static bool ERROR_RESET(const char *err_msg, uint32_t *stat_inc)
 {
 	(*stat_inc)++;
-	send_str("ERROR: ");
+	send_str("ERROR packet: ");
 	send_str(err_msg);
 	send('\n');
 	receive_packets_init();
 	return false;
+}
+
+static void packet_internal_reset() 
+{
+    packet_start = 0;
+    packet_code = 0;
+    packet_code_n = 0;
+    packet_size = 0;
+    packet_crc = 0;
+    packet_cnt = 0;
+    receive_check = receive_check_start;        
 }
 
 static bool receive_n_bytes(uint32_t cnt)
@@ -148,8 +156,10 @@ static bool receive_check_info()
 	packet_size = (((uint16_t)packet_buf[2]) << 0) |
 				  (((uint16_t)packet_buf[3]) << 8);
 
-	if ((packet_size > PACKET_MAX_SIZE) || ((packet_size % 4) != 0))
-		return ERROR_RESET("Size", &stat_error_size);
+	if ((packet_size > PACKET_MAX_SIZE) || ((packet_size % 4) != 0)) {
+        packet_internal_reset();
+        return ERROR_RESET("Size", &stat_error_size);
+    }		
 
 	packet_body = &packet_buf[4];
 
@@ -279,7 +289,8 @@ void receive_packets_worker()
 	if ((DWT_CYCCNT - packet_timeout) > time_limit)
 	{
 		stat_error_timeout++;
-		receive_packets_init();
+        packet_internal_reset();
+        packet_timeout = TIMEOUT_RESTART;
 		sfu_command_timeout();
 	}
 
