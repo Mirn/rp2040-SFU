@@ -103,6 +103,11 @@ bool find_latest_variant(bool *variant) {
     printf("\nfind_latest_variant\n");
 
     if (check_first_start_once()) {
+        main_selector = true;
+        erase_sign_block();
+        main_selector = false;
+        erase_sign_block();
+
         main_selector = false;
         *variant = main_selector;
         if (!check_run_context((uint32_t*)MAIN_RUN_FROM)) {
@@ -617,18 +622,18 @@ bool check_first_start_once(){
 }
 
 void erase_sign_block() {
+    printf("erase sign block #%i\n", main_selector);
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(MAIN_END - FLASH_BASE, FLASH_SECTOR_SIZE);
     restore_interrupts(ints);
+    printf("erase sign block #%i DONE\n", main_selector);            
 }
 
 void add_sign_crc() {
     uint32_t new_crc_sign = crc32_IEEE8023((const void *)MAIN_START_FROM, MAIN_END-MAIN_START_FROM);
     uint32_t new_time_stamp = max_time_stamp + 1;
     if (((*MAIN_CRC) != UINT32_MAX) || ((*MAIN_TIME_STAMP) != UINT32_MAX)) {
-        send_str("erase sign block\n");
         erase_sign_block();
-        send_str("erase sign block DONE\n");            
     }
 
     uint32_t write_buf[FLASH_PAGE_SIZE / sizeof(uint32_t)] = {[0 ... ((FLASH_PAGE_SIZE / sizeof(uint32_t))-1)] = UINT32_MAX};
