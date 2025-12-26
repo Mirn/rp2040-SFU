@@ -72,7 +72,7 @@ uint32_t fw_fullbody_crc32 = UINT32_MAX;
 #include "stm32f4xx_flash_inline.h"
 #endif
 
-#define SFU_VER 0x0100
+#define SFU_VER 0x0200 // 2page decoder and SFU_CMD_SPEED support
 
 #define SFU_CMD_ERASE_PART   0xB3
 #define SFU_CMD_INFO    0x97
@@ -82,6 +82,7 @@ uint32_t fw_fullbody_crc32 = UINT32_MAX;
 #define SFU_CMD_TIMEOUT 0xAA
 #define SFU_CMD_WRERROR 0x55
 #define SFU_CMD_HWRESET 0x11
+#define SFU_CMD_SPEED   0x4B
 
 bool check_first_start_once();
 bool check_run_context(uint32_t *boot_from);
@@ -91,6 +92,7 @@ void add_sign_crc();
 static void sfu_command_info(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_erase(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_write(uint8_t code, uint8_t *body, uint32_t size);
+static void sfu_command_speed(uint8_t code, uint8_t *body, uint32_t size);
 static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size);
 
 static uint32_t write_addr = 0;
@@ -230,6 +232,12 @@ void sfu_command_timeout()
     write_error = false;
     main_update_started = false;
 	packet_send(SFU_CMD_TIMEOUT, (uint8_t*)&write_addr, sizeof(write_addr));
+    if (usart_get_baud() != BAUD_RATE_DEFAULT) {
+        sleep_ms(10);
+        usart_set_baud(BAUD_RATE_DEFAULT);
+        sleep_ms(256);
+        packet_send(SFU_CMD_TIMEOUT, (uint8_t*)&write_addr, sizeof(write_addr));
+    }
 }
 
 void sfu_command_parser(uint8_t code, uint8_t *body, uint32_t size)
@@ -238,6 +246,7 @@ void sfu_command_parser(uint8_t code, uint8_t *body, uint32_t size)
 	if (code == SFU_CMD_ERASE) sfu_command_erase(code, body, size);
 	if (code == SFU_CMD_WRITE) sfu_command_write(code, body, size);
 	if (code == SFU_CMD_START) sfu_command_start(code, body, size);
+	if (code == SFU_CMD_SPEED) sfu_command_speed(code, body, size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -671,6 +680,31 @@ void main_start()
     rp2040_quiesce_and_jump((uint32_t)boot_from);
     return;
 #endif
+}
+
+static void sfu_command_speed(uint8_t code, uint8_t *body, uint32_t size)
+{
+    uint32_t current_bod = usart_get_baud();
+	if (size == 0) {
+        serialize_uint32(body + 0, current_bod);
+        packet_send(code, body, 4);
+        return;
+    } else if (size == 4) {
+        uint32_t new_bod = deserialize_uint32(body);
+        serialize_uint32(body + 0, current_bod);
+        serialize_uint32(body + 4, new_bod);
+        packet_send(code, body, 8);
+        sleep_ms(10);
+        if (usart_set_baud(new_bod)) {
+            sleep_ms(100);
+            uint32_t updated_bod = usart_get_baud();
+            serialize_uint32(body + 0, updated_bod);
+            packet_send(code, body, 4);
+            return;
+        }
+    } else {
+	    packet_send(SFU_CMD_WRERROR, body, 0);
+    }
 }
 
 static void sfu_command_start(uint8_t code, uint8_t *body, uint32_t size)

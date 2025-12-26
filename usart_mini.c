@@ -3,9 +3,9 @@
 #include "pico/stdlib.h"
 #include "hardware/dma.h"
 #include "hardware/uart.h"
+#include "usart_mini.h"
 
 #define UART_ID uart0
-#define BAUD_RATE 921600
 #define UART_TX_PIN 0
 #define UART_RX_PIN 1
 
@@ -17,6 +17,8 @@ uint32_t rx_errors = 0;
 uint32_t rx_overfulls = 0;
 uint32_t rx_count_max = 0;
 uint32_t rx_total = 0;
+
+static uint32_t g_uart_baud = BAUD_RATE_DEFAULT;
 
 #define RX_DMA_NOT_INITED UINT32_MAX
 #define RX_INITIAL UINT32_MAX
@@ -59,7 +61,7 @@ void usart_init() {
     rx_count_max   = 0;
     rx_total       = 0;
 
-    uart_init(UART_ID, BAUD_RATE);
+    uart_init(UART_ID, BAUD_RATE_DEFAULT);
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);   
     uart_set_format(UART_ID, 8 /*data*/, 1 /*stop*/, UART_PARITY_NONE);
@@ -192,4 +194,55 @@ bool receive_byte(uint8_t *rx_data)
 uint32_t receive_size()
 {
 	return sizeof(rx_buffer);
+}
+
+uint32_t usart_get_baud(void) {
+    return g_uart_baud;
+}
+
+bool usart_set_baud(uint32_t new_baud) {
+    if (new_baud < 1200 || new_baud > 10000000) {
+        return false;
+    }
+    if (new_baud == g_uart_baud && g_uart_baud != 0) {
+        return true;
+    }
+
+    // Pull any bytes already received by DMA into the main RX buffer.
+    // This prevents mixing "old baud" tail bytes with "new baud" bytes in software.
+    if (rxch != RX_DMA_NOT_INITED) {
+        rx_dma_check();
+    }
+
+    uart_hw_t *hw = uart_get_hw(UART_ID);
+
+    // Wait until the UART is not busy (bounded).
+    // Under your protocol, TX should already be silent (ACK sent before this call).
+    absolute_time_t tx_deadline = make_timeout_time_ms(5);
+    while ((hw->fr & UART_UARTFR_BUSY_BITS) && !time_reached(tx_deadline)) {
+        tight_loop_contents();
+    }
+
+    // Ensure RX FIFO is empty (bounded). Under the protocol RX should be silent too.
+    // Drain any unexpected residue quickly.
+    absolute_time_t rx_deadline = make_timeout_time_ms(2);
+    while (!(hw->fr & UART_UARTFR_RXFE_BITS) && !time_reached(rx_deadline)) {
+        (void)hw->dr;
+    }
+
+    // Disable UART before changing baud divisors (recommended for PL011).
+    // Keep a copy of CR to restore RXE/TXE/UARTEN state exactly.
+    uint32_t old_cr = hw->cr;
+    hw->cr &= ~(UART_UARTCR_RXE_BITS | UART_UARTCR_TXE_BITS | UART_UARTCR_UARTEN_BITS);
+    __compiler_memory_barrier();
+
+    // Program the new baud rate (Pico SDK updates IBRD/FBRD properly).
+    uart_set_baudrate(UART_ID, new_baud);
+    g_uart_baud = new_baud;
+
+    // Restore UART state.
+    hw->cr = old_cr;
+    __compiler_memory_barrier();
+
+    return true;
 }

@@ -11,8 +11,7 @@
 
 // FOR RP2040
 
-extern volatile uint32_t rx_pos_write;
-extern volatile uint32_t rx_pos_read;
+#define BAUD_RATE_DEFAULT 921600
 
 extern uint32_t rx_errors;
 extern uint32_t rx_overfulls;
@@ -33,5 +32,8 @@ uint32_t receive_size();
 void send_block(const uint8_t *data, const uint32_t size);
 
 void rx_dma_check();
+
+uint32_t usart_get_baud(void);
+bool usart_set_baud(uint32_t new_baud);
 
 #endif
