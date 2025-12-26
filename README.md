@@ -18,14 +18,12 @@ It provides:
 
 ---
 
-# Host uploading tool
-(windows)
-https://github.com/Mirn/Boot_F4_fast_uart/tree/master 
+# Host firmware uploading tool for this SFU
+(windows only with GUI)
+[https://github.com/Mirn/Boot_F4_fast_uart/tree/master/delphi/Release ](https://github.com/Mirn/Boot_F4_fast_uart/tree/master/delphi/Release)
 
-(Linux Wine + CP2102n reset adaptation ) 
-https://github.com/Mirn/rp2040-SFU/tree/main/Linux_port
-TODO: fix this crap, rewrite to native Linux
-
+(CLI only, Linux or Windows, rust) 
+https://github.com/Mirn/sfu-cli-uploader
 
 ## Overview
 
